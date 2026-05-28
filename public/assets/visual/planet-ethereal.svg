@@ -1,0 +1,134 @@
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <clipPath id="orbClip">
+      <circle cx="600" cy="600" r="470"/>
+    </clipPath>
+
+    <radialGradient id="orbBody" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(424 318) rotate(48) scale(820)">
+      <stop stop-color="#FFF9EA" stop-opacity="0.9"/>
+      <stop offset="0.25" stop-color="#F7DEAA" stop-opacity="0.46"/>
+      <stop offset="0.55" stop-color="#DDB0BA" stop-opacity="0.22"/>
+      <stop offset="0.78" stop-color="#9FBFD6" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#11101D" stop-opacity="0.48"/>
+    </radialGradient>
+
+    <radialGradient id="orbLight" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(452 390) rotate(35) scale(420)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.56"/>
+      <stop offset="0.34" stop-color="#FFF4D8" stop-opacity="0.22"/>
+      <stop offset="0.72" stop-color="#F0C7D0" stop-opacity="0.08"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+
+    <radialGradient id="orbShade" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(790 800) rotate(40) scale(720)">
+      <stop stop-color="#030611" stop-opacity="0.54"/>
+      <stop offset="0.52" stop-color="#080A17" stop-opacity="0.18"/>
+      <stop offset="1" stop-color="#080A17" stop-opacity="0"/>
+    </radialGradient>
+
+    <linearGradient id="veilA" x1="180" y1="430" x2="1020" y2="560" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF8EA" stop-opacity="0"/>
+      <stop offset="0.26" stop-color="#FFF8EA" stop-opacity="0.22"/>
+      <stop offset="0.54" stop-color="#F1C8D0" stop-opacity="0.14"/>
+      <stop offset="0.82" stop-color="#BFD4E8" stop-opacity="0.1"/>
+      <stop offset="1" stop-color="#BFD4E8" stop-opacity="0"/>
+    </linearGradient>
+
+    <linearGradient id="veilB" x1="1030" y1="628" x2="180" y2="744" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#BFD4E8" stop-opacity="0"/>
+      <stop offset="0.3" stop-color="#D8A7B1" stop-opacity="0.12"/>
+      <stop offset="0.62" stop-color="#FFF4D8" stop-opacity="0.16"/>
+      <stop offset="1" stop-color="#FFF4D8" stop-opacity="0"/>
+    </linearGradient>
+
+    <filter id="blurVeil" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="18"/>
+    </filter>
+
+    <filter id="softGrain" x="-20%" y="-20%" width="140%" height="140%" color-interpolation-filters="sRGB">
+      <feTurbulence type="fractalNoise" baseFrequency="0.018 0.024" numOctaves="3" seed="64" result="noise"/>
+      <feColorMatrix in="noise" type="matrix" values="0.18 0 0 0 0.36 0 0.16 0 0 0.3 0 0 0.2 0 0.42 0 0 0 0.16 0" result="grain"/>
+      <feBlend in="SourceGraphic" in2="grain" mode="screen"/>
+    </filter>
+
+    <filter id="orbGlow" x="-45%" y="-45%" width="190%" height="190%" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="28" result="blur"/>
+      <feColorMatrix in="blur" type="matrix" values="1 0 0 0 0.84 0 1 0 0 0.58 0 0 1 0 0.44 0 0 0 0.46 0"/>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <style>
+    @media (prefers-reduced-motion: no-preference) {
+      .orb-flow {
+        transform-origin: 600px 600px;
+        animation: slowFlow 42s linear infinite;
+      }
+
+      .orb-flow-reverse {
+        transform-origin: 600px 600px;
+        animation: slowFlowReverse 54s linear infinite;
+      }
+
+      .orb-pulse {
+        transform-origin: 600px 600px;
+        animation: orbPulse 7s ease-in-out infinite;
+      }
+    }
+
+    @keyframes slowFlow {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(360deg); }
+    }
+
+    @keyframes slowFlowReverse {
+      from { transform: rotate(0deg); }
+      to { transform: rotate(-360deg); }
+    }
+
+    @keyframes orbPulse {
+      0%, 100% { opacity: 0.68; transform: scale(0.99); }
+      50% { opacity: 0.96; transform: scale(1.014); }
+    }
+  </style>
+
+  <rect width="1200" height="1200" fill="transparent"/>
+  <circle cx="600" cy="600" r="500" fill="#F1C98A" opacity="0.12" filter="url(#orbGlow)"/>
+
+  <g clip-path="url(#orbClip)" filter="url(#softGrain)">
+    <circle cx="600" cy="600" r="470" fill="url(#orbBody)" opacity="0.82"/>
+
+    <g class="orb-flow" filter="url(#blurVeil)">
+      <path d="M170 456C344 382 458 442 596 482C742 524 856 488 1038 408" stroke="url(#veilA)" stroke-width="76" stroke-linecap="round"/>
+      <path d="M252 544C410 486 534 526 668 570C792 610 898 586 1000 528" stroke="#FFF9EA" stroke-opacity="0.08" stroke-width="34" stroke-linecap="round"/>
+    </g>
+
+    <g class="orb-flow-reverse" filter="url(#blurVeil)">
+      <path d="M180 710C346 646 464 680 606 722C760 766 884 730 1024 662" stroke="url(#veilB)" stroke-width="68" stroke-linecap="round"/>
+    </g>
+
+    <g class="orb-pulse">
+      <circle cx="600" cy="600" r="314" fill="none" stroke="#FFF8EA" stroke-opacity="0.06" stroke-width="2"/>
+      <circle cx="600" cy="600" r="224" fill="none" stroke="#F1C8D0" stroke-opacity="0.055" stroke-width="1.5"/>
+      <circle cx="600" cy="600" r="140" fill="none" stroke="#BFD4E8" stroke-opacity="0.05" stroke-width="1.5"/>
+    </g>
+
+    <g opacity="0.26">
+      <circle cx="420" cy="410" r="4.5" fill="#FFF9EA"/>
+      <circle cx="528" cy="324" r="2.8" fill="#FFFFFF"/>
+      <circle cx="778" cy="466" r="3.5" fill="#FFF8EA"/>
+      <circle cx="704" cy="748" r="3.8" fill="#FFFFFF"/>
+      <circle cx="502" cy="816" r="2.6" fill="#FFF8EA"/>
+    </g>
+
+    <rect width="1200" height="1200" fill="url(#orbLight)"/>
+    <rect width="1200" height="1200" fill="url(#orbShade)"/>
+    <path d="M1022 180C1184 514 1054 946 730 1088C542 1170 320 1130 162 986C286 1074 460 1096 612 1028C904 894 1032 514 868 226C926 178 980 164 1022 180Z" fill="#030611" opacity="0.25"/>
+    <path d="M330 184C222 280 152 430 140 586C128 736 172 876 262 984C92 874 8 656 64 450C112 280 214 176 330 184Z" fill="#FFF8EA" opacity="0.07"/>
+  </g>
+
+  <circle cx="600" cy="600" r="470" stroke="#FFF8EA" stroke-opacity="0.14" stroke-width="2"/>
+  <circle cx="600" cy="600" r="482" stroke="#BFD4E8" stroke-opacity="0.055" stroke-width="5"/>
+</svg>

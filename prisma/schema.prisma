@@ -1,0 +1,140 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model UserAccount {
+  id                   String                @id @default(cuid())
+  email                String?               @unique
+  displayName          String?
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  memoryDocument       UserMemoryDocument?
+  appStates            UserAppState[]
+  eventLogs            UserEventLog[]
+  conversationMessages ConversationMessage[]
+  memories             Memory[]
+  profileDocuments     ProfileDocument[]
+  lifeLetters          LifeLetter[]
+  worldStates          WorldState[]
+}
+
+model UserMemoryDocument {
+  id                String      @id @default(cuid())
+  userId            String      @unique
+  personaCompletion Int         @default(0)
+  personaReady      Boolean     @default(false)
+  profileReady      Boolean     @default(false)
+  worldReady        Boolean     @default(false)
+  currentModule     String?
+  soulDocument      String?
+  agentsDocument    String?
+  profileSnapshot   String?
+  stateSnapshot     String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  user              UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserAppState {
+  id        String      @id @default(cuid())
+  userId    String
+  key       String
+  value     String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, key])
+  @@index([userId])
+}
+
+model UserEventLog {
+  id        String      @id @default(cuid())
+  userId    String
+  type      String
+  payload   String?
+  createdAt DateTime    @default(now())
+  user      UserAccount @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([type])
+}
+
+model ConversationMessage {
+  id        String   @id @default(cuid())
+  userId    String?
+  role      String
+  content   String
+  mode      String
+  createdAt DateTime @default(now())
+  user      UserAccount? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, mode, createdAt])
+}
+
+model Memory {
+  id              String   @id @default(cuid())
+  userId          String?
+  type            String
+  content         String
+  emotion         String?
+  importance      Int
+  confidence      Float
+  sourceMessageId String?
+  createdAt       DateTime @default(now())
+  user            UserAccount? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model ProfileDocument {
+  id        String   @id @default(cuid())
+  userId    String?
+  section   String
+  title     String
+  content   String
+  updatedAt DateTime @updatedAt
+  user      UserAccount? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, section])
+  @@index([userId, section])
+}
+
+model LifeLetter {
+  id                  String   @id @default(cuid())
+  userId              String?
+  question            String
+  category            String
+  answer              String
+  referencedMemoryIds String?
+  actionTitle         String?
+  actionSteps         String?
+  createdAt           DateTime @default(now())
+  user                UserAccount? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+}
+
+model WorldState {
+  id        String   @id @default(cuid())
+  userId    String?
+  mood      String
+  scene     String
+  energy    Int
+  clarity   Int
+  diary     String
+  updatedAt DateTime @updatedAt
+  user      UserAccount? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, updatedAt])
+}

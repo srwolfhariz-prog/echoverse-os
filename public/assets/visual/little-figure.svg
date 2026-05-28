@@ -1,0 +1,40 @@
+<svg width="160" height="270" viewBox="0 0 160 270" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="silhouetteInk" x1="80" y1="8" x2="80" y2="270" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#2D2232"/>
+      <stop offset="0.48" stop-color="#120D18"/>
+      <stop offset="1" stop-color="#050409"/>
+    </linearGradient>
+    <radialGradient id="aureole" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(80 130) rotate(90) scale(126 56)">
+      <stop stop-color="#FFF2CC" stop-opacity="0.34"/>
+      <stop offset="0.42" stop-color="#D8A7B1" stop-opacity="0.12"/>
+      <stop offset="1" stop-color="#D8B46A" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softSilhouetteShadow" x="12" y="-8" width="136" height="294" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="16" stdDeviation="11" flood-color="#000000" flood-opacity="0.48"/>
+      <feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="#FFE8B0" flood-opacity="0.22"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="80" cy="130" rx="54" ry="124" fill="url(#aureole)"/>
+
+  <g filter="url(#softSilhouetteShadow)">
+    <path d="M58 41L65 20L76 38L80 8L84 38L95 20L102 41C98 47 90 50 80 50C70 50 62 47 58 41Z" fill="url(#silhouetteInk)"/>
+
+    <path d="M45 73C45 45 61 31 80 31C99 31 115 45 115 73C115 90 109 104 98 112H62C51 104 45 90 45 73Z" fill="url(#silhouetteInk)"/>
+    <path d="M56 71C56 53 66 42 80 42C94 42 104 53 104 71C104 88 94 100 80 100C66 100 56 88 56 71Z" fill="url(#silhouetteInk)"/>
+
+    <path d="M68 104C68 96 73 91 80 91C87 91 92 96 92 104V120H68V104Z" fill="url(#silhouetteInk)"/>
+
+    <path d="M56 119C60 106 69 99 80 99C91 99 100 106 104 119L124 213C127 226 118 236 106 233L93 229L80 244L67 229L54 233C42 236 33 226 36 213L56 119Z" fill="url(#silhouetteInk)"/>
+
+    <path d="M57 121C44 127 34 141 29 157C27 163 30 168 36 169C41 170 45 167 47 162C51 151 57 143 65 139L57 121Z" fill="url(#silhouetteInk)"/>
+    <path d="M103 121C116 127 126 141 131 157C133 163 130 168 124 169C119 170 115 167 113 162C109 151 103 143 95 139L103 121Z" fill="url(#silhouetteInk)"/>
+
+    <path d="M67 229H77V259C77 265 73 269 67 269C61 269 57 265 57 259V244C57 235 61 230 67 229Z" fill="url(#silhouetteInk)"/>
+    <path d="M83 229H93C99 230 103 235 103 244V259C103 265 99 269 93 269C87 269 83 265 83 259V229Z" fill="url(#silhouetteInk)"/>
+
+    <path d="M53 260H77V270H57C51 270 47 266 50 263C51 261 52 260 53 260Z" fill="url(#silhouetteInk)"/>
+    <path d="M83 260H107C108 260 109 261 110 263C113 266 109 270 103 270H83V260Z" fill="url(#silhouetteInk)"/>
+  </g>
+</svg>
