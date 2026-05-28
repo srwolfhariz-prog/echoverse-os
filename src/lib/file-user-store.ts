@@ -3,9 +3,11 @@ import path from "path";
 import {
   appendFile,
   mkdir,
+  open,
   readFile,
   rename,
   stat,
+  unlink,
   writeFile,
 } from "fs/promises";
 
@@ -13,6 +15,7 @@ export const echoverseDataRoot = path.join(process.cwd(), ".echoverse-data");
 
 const usersIndexPath = path.join(echoverseDataRoot, "users.json");
 const usersDataDir = path.join(echoverseDataRoot, "users");
+const jsonFileQueues = new Map<string, Promise<unknown>>();
 
 export type FileUserIndexItem = {
   id: string;
@@ -90,6 +93,12 @@ export type FileMemoryStore = {
   memoryDocument?: Partial<FileUserMemoryDocument>;
   appState?: Record<string, string>;
   conversations?: FileConversationMessage[];
+};
+
+type NormalizedFileMemoryStore = FileMemoryStore & {
+  appState: Record<string, string>;
+  conversations: FileConversationMessage[];
+  memoryDocument: FileUserMemoryDocument;
 };
 
 export type FileLifeLetter = {
@@ -183,11 +192,67 @@ async function pathExists(target: string) {
   }
 }
 
-async function readJsonFile<T>(target: string, fallback: T): Promise<T> {
+export async function safeReadJson<T>(filePath: string, fallbackData: T): Promise<T> {
+  return withJsonFileQueue(filePath, () =>
+    safeReadJsonUnlocked(filePath, fallbackData),
+  );
+}
+
+export async function safeWriteJson(filePath: string, data: unknown) {
+  return withJsonFileQueue(filePath, () => safeWriteJsonUnlocked(filePath, data));
+}
+
+async function updateJsonFile<T, R>(
+  filePath: string,
+  fallbackData: T,
+  updater: (current: T) => Promise<{ next: T; result: R }> | { next: T; result: R },
+) {
+  return withJsonFileQueue(filePath, async () => {
+    const current = await safeReadJsonUnlocked(filePath, fallbackData);
+    const { next, result } = await updater(current);
+
+    await safeWriteJsonUnlocked(filePath, next);
+
+    return result;
+  });
+}
+
+function withJsonFileQueue<T>(filePath: string, task: () => Promise<T> | T) {
+  const key = path.resolve(filePath);
+  const previous = jsonFileQueues.get(key) ?? Promise.resolve();
+  const run = previous.catch(() => undefined).then(task);
+  const cleanup = run.finally(() => {
+    if (jsonFileQueues.get(key) === cleanup) {
+      jsonFileQueues.delete(key);
+    }
+  });
+  jsonFileQueues.set(key, cleanup);
+
+  return run;
+}
+
+async function safeReadJsonUnlocked<T>(
+  filePath: string,
+  fallbackData: T,
+): Promise<T> {
   try {
-    return JSON.parse(await readFile(target, "utf8")) as T;
+    return JSON.parse(await readFile(filePath, "utf8")) as T;
   } catch (error) {
     if (isMissingFile(error)) {
+      const fallback = cloneJsonData(fallbackData);
+
+      await safeWriteJsonUnlocked(filePath, fallback);
+
+      return fallback;
+    }
+
+    if (error instanceof SyntaxError) {
+      await backupCorruptJson(filePath);
+
+      const fallback = cloneJsonData(fallbackData);
+
+      await safeWriteJsonUnlocked(filePath, fallback);
+
       return fallback;
     }
 
@@ -195,18 +260,46 @@ async function readJsonFile<T>(target: string, fallback: T): Promise<T> {
   }
 }
 
-async function writeJsonFile(target: string, value: unknown) {
-  await mkdir(path.dirname(target), { recursive: true });
-  const tmp = `${target}.${process.pid}.${Date.now()}.tmp`;
+async function safeWriteJsonUnlocked(filePath: string, data: unknown) {
+  await mkdir(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.${process.pid}.${Date.now()}.${randomUUID().slice(0, 8)}.tmp`;
+  let handle: Awaited<ReturnType<typeof open>> | null = null;
 
-  await writeFile(tmp, `${stringifyJson(value)}\n`, "utf8");
-  await rename(tmp, target);
+  try {
+    handle = await open(tmp, "w");
+    await handle.writeFile(`${JSON.stringify(data, null, 2)}\n`, "utf8");
+    await handle.sync();
+    await handle.close();
+    handle = null;
+    await rename(tmp, filePath);
+  } catch (error) {
+    if (handle) {
+      await handle.close().catch(() => {});
+    }
+
+    await unlink(tmp).catch(() => {});
+
+    throw error;
+  }
 }
 
-function stringifyJson(value: unknown) {
-  return (JSON.stringify(value, null, 2) ?? "null").replace(/[^\x00-\x7F]/g, (char) =>
-    `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`,
-  );
+async function backupCorruptJson(filePath: string) {
+  const timestamp = new Date()
+    .toISOString()
+    .replace(/[:.]/g, "-");
+  const backupPath = `${filePath}.corrupt.${timestamp}.bak`;
+
+  try {
+    await rename(filePath, backupPath);
+  } catch (error) {
+    if (!isMissingFile(error) && process.env.NODE_ENV !== "production") {
+      console.error(`Failed to back up corrupt JSON file: ${filePath}`, error);
+    }
+  }
+}
+
+function cloneJsonData<T>(value: T): T {
+  return JSON.parse(JSON.stringify(value)) as T;
 }
 
 async function writeTextFileIfMissing(target: string, value: string) {
@@ -220,27 +313,18 @@ async function writeTextFileIfMissing(target: string, value: string) {
 
 export async function ensureEchoverseDataRoot() {
   await mkdir(usersDataDir, { recursive: true });
-
-  if (!(await pathExists(usersIndexPath))) {
-    await writeJsonFile(usersIndexPath, { users: [] } satisfies FileUsersIndex);
-  }
 }
 
 export async function readUsersIndex() {
   await ensureEchoverseDataRoot();
 
-  const index = await readJsonFile<FileUsersIndex>(usersIndexPath, { users: [] });
+  const index = await safeReadJson<FileUsersIndex>(usersIndexPath, { users: [] });
 
   if (!Array.isArray(index.users)) {
     return { users: [] } satisfies FileUsersIndex;
   }
 
   return index;
-}
-
-async function writeUsersIndex(index: FileUsersIndex) {
-  await ensureEchoverseDataRoot();
-  await writeJsonFile(usersIndexPath, { users: index.users });
 }
 
 export async function ensureUserDataFiles(user: FileUserIndexItem) {
@@ -266,11 +350,7 @@ export async function ensureUserDataFiles(user: FileUserIndexItem) {
 }
 
 async function writeJsonFileIfMissing(target: string, value: unknown) {
-  if (await pathExists(target)) {
-    return;
-  }
-
-  await writeJsonFile(target, value);
+  await safeReadJson(target, value);
 }
 
 export async function findFileUserById(userId: string) {
@@ -318,40 +398,49 @@ export async function registerFileUser({
     throw new Error("INVALID_REGISTER_INPUT");
   }
 
-  const index = await readUsersIndex();
-  const usernameExists = index.users.some(
-    (item) => normalizeUsername(item.username) === normalizeUsername(trimmedUsername),
-  );
-
-  if (usernameExists) {
-    throw new Error("USERNAME_EXISTS");
-  }
-
   const now = new Date().toISOString();
-  let id = `u_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+  const user = await updateJsonFile<FileUsersIndex, FileUserIndexItem>(
+    usersIndexPath,
+    { users: [] },
+    (index) => {
+      const users = Array.isArray(index.users) ? index.users : [];
+      const usernameExists = users.some(
+        (item) =>
+          normalizeUsername(item.username) === normalizeUsername(trimmedUsername),
+      );
 
-  while (index.users.some((item) => item.id === id)) {
-    id = `u_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
-  }
+      if (usernameExists) {
+        throw new Error("USERNAME_EXISTS");
+      }
 
-  const user: FileUserIndexItem = {
-    id,
-    username: trimmedUsername,
-    passwordHash,
-    createdAt: now,
-    lastLoginAt: now,
-    dataDir: userRelativeDir(id),
-  };
+      let id = `u_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
 
-  index.users.push(user);
-  await writeUsersIndex(index);
+      while (users.some((item) => item.id === id)) {
+        id = `u_${randomUUID().replace(/-/g, "").slice(0, 12)}`;
+      }
+
+      const nextUser: FileUserIndexItem = {
+        id,
+        username: trimmedUsername,
+        passwordHash,
+        createdAt: now,
+        lastLoginAt: now,
+        dataDir: userRelativeDir(id),
+      };
+
+      return {
+        next: { users: [...users, nextUser] },
+        result: nextUser,
+      };
+    },
+  );
   await ensureUserDataFiles(user);
-  await updateUserProfile(id, {
+  await updateUserProfile(user.id, {
     avatarDataUrl,
     displayName: trimmedUsername,
     lastLoginAt: now,
   });
-  await appendUserAction(id, "user.registered", {
+  await appendUserAction(user.id, "user.registered", {
     username: trimmedUsername,
   });
 
@@ -359,30 +448,39 @@ export async function registerFileUser({
 }
 
 export async function loginFileUser(username: string, passwordHash: string) {
-  const user = await findFileUserByUsername(username);
-
-  if (!user) {
-    throw new Error("USERNAME_NOT_FOUND");
-  }
-
-  if (user.passwordHash !== passwordHash) {
-    throw new Error("PASSWORD_MISMATCH");
-  }
-
   const now = new Date().toISOString();
-  const index = await readUsersIndex();
-  const nextUsers = index.users.map((item) =>
-    item.id === user.id ? { ...item, lastLoginAt: now } : item,
-  );
-  const updatedUser = nextUsers.find((item) => item.id === user.id) ?? {
-    ...user,
-    lastLoginAt: now,
-  };
+  const updatedUser = await updateJsonFile<FileUsersIndex, FileUserIndexItem>(
+    usersIndexPath,
+    { users: [] },
+    (index) => {
+      const users = Array.isArray(index.users) ? index.users : [];
+      const user =
+        users.find(
+          (item) => normalizeUsername(item.username) === normalizeUsername(username),
+        ) ?? null;
 
-  await writeUsersIndex({ users: nextUsers });
-  await updateUserProfile(user.id, { lastLoginAt: now });
-  await appendUserAction(user.id, "user.logged_in", {
-    username: user.username,
+      if (!user) {
+        throw new Error("USERNAME_NOT_FOUND");
+      }
+
+      if (user.passwordHash !== passwordHash) {
+        throw new Error("PASSWORD_MISMATCH");
+      }
+
+      const nextUser = { ...user, lastLoginAt: now };
+
+      return {
+        next: {
+          users: users.map((item) => (item.id === user.id ? nextUser : item)),
+        },
+        result: nextUser,
+      };
+    },
+  );
+
+  await updateUserProfile(updatedUser.id, { lastLoginAt: now });
+  await appendUserAction(updatedUser.id, "user.logged_in", {
+    username: updatedUser.username,
   });
 
   return updatedUser;
@@ -395,7 +493,7 @@ export async function readUserProfile(userId: string) {
     return null;
   }
 
-  return readJsonFile<FileProfile>(userFile(userId, "profile.json"), {
+  return safeReadJson<FileProfile>(userFile(userId, "profile.json"), {
     id: user.id,
     username: user.username,
     createdAt: user.createdAt,
@@ -413,19 +511,27 @@ export async function updateUserProfile(
     return null;
   }
 
-  const current = await readUserProfile(userId);
-  const next = {
-    id: user.id,
-    username: user.username,
-    createdAt: user.createdAt,
-    lastLoginAt: user.lastLoginAt,
-    ...current,
-    ...patch,
-  } satisfies FileProfile;
+  return updateJsonFile<FileProfile, FileProfile>(
+    userFile(userId, "profile.json"),
+    {
+      id: user.id,
+      username: user.username,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
+    },
+    (current) => {
+      const next = {
+        ...current,
+        ...patch,
+        id: user.id,
+        username: user.username,
+        createdAt: user.createdAt,
+        lastLoginAt: user.lastLoginAt,
+      } satisfies FileProfile;
 
-  await writeJsonFile(userFile(userId, "profile.json"), next);
-
-  return next;
+      return { next, result: next };
+    },
+  );
 }
 
 export async function readUserMemoryStore(userId: string) {
@@ -435,19 +541,52 @@ export async function readUserMemoryStore(userId: string) {
     return null;
   }
 
-  const store = await readJsonFile<FileMemoryStore>(userFile(userId, "memory.json"), {
-    memories: [],
-    profileDocuments: [],
-  });
+  const store = await safeReadJson<FileMemoryStore>(
+    userFile(userId, "memory.json"),
+    createDefaultMemoryStore(),
+  );
 
   return normalizeMemoryStore(userId, store);
 }
 
-async function writeUserMemoryStore(userId: string, store: FileMemoryStore) {
-  await writeJsonFile(userFile(userId, "memory.json"), normalizeMemoryStore(userId, store));
+async function updateUserMemoryStore<R>(
+  userId: string,
+  updater: (
+    store: NormalizedFileMemoryStore,
+  ) => Promise<{ next: FileMemoryStore; result: R }> | { next: FileMemoryStore; result: R },
+) {
+  const user = await findFileUserById(userId);
+
+  if (!user) {
+    return null;
+  }
+
+  return updateJsonFile<FileMemoryStore, R>(
+    userFile(userId, "memory.json"),
+    createDefaultMemoryStore(),
+    async (current) => {
+      const store = normalizeMemoryStore(userId, current);
+      const { next, result } = await updater(store);
+
+      return {
+        next: normalizeMemoryStore(userId, next),
+        result,
+      };
+    },
+  );
 }
 
-function normalizeMemoryStore(userId: string, store: FileMemoryStore) {
+function createDefaultMemoryStore(): FileMemoryStore {
+  return {
+    memories: [],
+    profileDocuments: [],
+  };
+}
+
+function normalizeMemoryStore(
+  userId: string,
+  store: FileMemoryStore,
+): NormalizedFileMemoryStore {
   const now = new Date().toISOString();
   const createdAt = store.memoryDocument?.createdAt ?? now;
   const memoryDocument: FileUserMemoryDocument = {
@@ -508,34 +647,29 @@ export async function updateFileMemoryDocument(
   userId: string,
   patch: Partial<FileUserMemoryDocument>,
 ) {
-  const store = await readUserMemoryStore(userId);
+  return updateUserMemoryStore(userId, (store) => {
+    const nextMemoryDocument = {
+      ...store.memoryDocument,
+      ...patch,
+      personaCompletion:
+        typeof patch.personaCompletion !== "undefined"
+          ? clampCompletion(patch.personaCompletion)
+          : store.memoryDocument.personaCompletion,
+      updatedAt: new Date().toISOString(),
+    };
 
-  if (!store) {
-    return null;
-  }
+    if (nextMemoryDocument.personaCompletion === 100) {
+      nextMemoryDocument.personaReady = true;
+    }
 
-  const nextMemoryDocument = {
-    ...store.memoryDocument,
-    ...patch,
-    personaCompletion:
-      typeof patch.personaCompletion !== "undefined"
-        ? clampCompletion(patch.personaCompletion)
-        : store.memoryDocument.personaCompletion,
-    updatedAt: new Date().toISOString(),
-  };
-
-  if (nextMemoryDocument.personaCompletion === 100) {
-    nextMemoryDocument.personaReady = true;
-  }
-
-  const nextStore = {
-    ...store,
-    memoryDocument: nextMemoryDocument,
-  };
-
-  await writeUserMemoryStore(userId, nextStore);
-
-  return nextMemoryDocument;
+    return {
+      next: {
+        ...store,
+        memoryDocument: nextMemoryDocument,
+      },
+      result: nextMemoryDocument,
+    };
+  });
 }
 
 export async function setFileAppState(
@@ -543,31 +677,28 @@ export async function setFileAppState(
   key: string,
   value: unknown,
 ) {
-  const store = await readUserMemoryStore(userId);
-
-  if (!store) {
-    return null;
-  }
-
   const serialized = serialize(value);
-
-  store.appState = {
-    ...store.appState,
-    [key]: serialized,
-  };
-
-  await writeUserMemoryStore(userId, store);
+  const result = await updateUserMemoryStore(userId, (store) => ({
+    next: {
+      ...store,
+      appState: {
+        ...store.appState,
+        [key]: serialized,
+      },
+    },
+    result: {
+      key,
+      userId,
+      value: serialized,
+      updatedAt: new Date().toISOString(),
+    },
+  }));
 
   if (key.startsWith("parallel_world.")) {
     await setFileWorldAppState(userId, key, serialized);
   }
 
-  return {
-    key,
-    userId,
-    value: serialized,
-    updatedAt: new Date().toISOString(),
-  };
+  return result;
 }
 
 export async function getFileAppStateValue(userId: string, key: string) {
@@ -595,34 +726,34 @@ export async function upsertFileProfileDocument(
   userId: string,
   document: { section: string; title: string; content: string },
 ) {
-  const store = await readUserMemoryStore(userId);
+  return updateUserMemoryStore(userId, (store) => {
+    const now = new Date().toISOString();
+    const existing = store.profileDocuments.find(
+      (item) => item.section === document.section,
+    );
+    const nextDocument: FileProfileDocument = {
+      id: existing?.id ?? randomUUID(),
+      userId,
+      section: document.section,
+      title: document.title,
+      content: document.content,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
 
-  if (!store) {
-    return null;
-  }
-
-  const now = new Date().toISOString();
-  const existing = store.profileDocuments.find(
-    (item) => item.section === document.section,
-  );
-  const nextDocument: FileProfileDocument = {
-    id: existing?.id ?? randomUUID(),
-    userId,
-    section: document.section,
-    title: document.title,
-    content: document.content,
-    createdAt: existing?.createdAt ?? now,
-    updatedAt: now,
-  };
-
-  store.profileDocuments = [
-    ...store.profileDocuments.filter((item) => item.section !== document.section),
-    nextDocument,
-  ];
-
-  await writeUserMemoryStore(userId, store);
-
-  return nextDocument;
+    return {
+      next: {
+        ...store,
+        profileDocuments: [
+          ...store.profileDocuments.filter(
+            (item) => item.section !== document.section,
+          ),
+          nextDocument,
+        ],
+      },
+      result: nextDocument,
+    };
+  });
 }
 
 export async function upsertFileProfileDocuments(
@@ -673,12 +804,6 @@ export async function createFileMemories(
     sourceMessageId?: string | null;
   }>,
 ) {
-  const store = await readUserMemoryStore(userId);
-
-  if (!store) {
-    return [];
-  }
-
   const now = new Date().toISOString();
   const saved = memories.map((memory) => ({
     id: randomUUID(),
@@ -692,22 +817,21 @@ export async function createFileMemories(
     createdAt: now,
   }));
 
-  store.memories = [...store.memories, ...saved];
-  await writeUserMemoryStore(userId, store);
+  const result = await updateUserMemoryStore(userId, (store) => ({
+    next: {
+      ...store,
+      memories: [...store.memories, ...saved],
+    },
+    result: saved,
+  }));
 
-  return saved;
+  return result ?? [];
 }
 
 export async function createFileConversationMessage(
   userId: string,
   input: { content: string; mode: string; role: "assistant" | "user" },
 ) {
-  const store = await readUserMemoryStore(userId);
-
-  if (!store) {
-    return null;
-  }
-
   const message: FileConversationMessage = {
     id: randomUUID(),
     userId,
@@ -717,10 +841,15 @@ export async function createFileConversationMessage(
     createdAt: new Date().toISOString(),
   };
 
-  store.conversations = [...(store.conversations ?? []), message].slice(-200);
-  await writeUserMemoryStore(userId, store);
+  const result = await updateUserMemoryStore(userId, (store) => ({
+    next: {
+      ...store,
+      conversations: [...store.conversations, message].slice(-200),
+    },
+    result: message,
+  }));
 
-  return message;
+  return result;
 }
 
 export async function listFileConversationMessages(
@@ -743,17 +872,13 @@ export async function readLettersStore(userId: string) {
     return null;
   }
 
-  const store = await readJsonFile<FileLettersStore>(userFile(userId, "letters.json"), {
+  const store = await safeReadJson<FileLettersStore>(userFile(userId, "letters.json"), {
     letters: [],
   });
 
   return {
     letters: Array.isArray(store.letters) ? store.letters : [],
   } satisfies FileLettersStore;
-}
-
-async function writeLettersStore(userId: string, store: FileLettersStore) {
-  await writeJsonFile(userFile(userId, "letters.json"), store);
 }
 
 export async function listFileLetters(userId: string, take?: number) {
@@ -769,9 +894,7 @@ export async function createFileLifeLetter(
   userId: string,
   input: Omit<FileLifeLetter, "createdAt" | "id" | "userId">,
 ) {
-  const store = await readLettersStore(userId);
-
-  if (!store) {
+  if (!(await findFileUserById(userId))) {
     return null;
   }
 
@@ -782,10 +905,19 @@ export async function createFileLifeLetter(
     createdAt: new Date().toISOString(),
   };
 
-  store.letters = [letter, ...store.letters].slice(0, 200);
-  await writeLettersStore(userId, store);
-
-  return letter;
+  return updateJsonFile<FileLettersStore, FileLifeLetter | null>(
+    userFile(userId, "letters.json"),
+    { letters: [] },
+    (store) => ({
+      next: {
+        letters: [letter, ...(Array.isArray(store.letters) ? store.letters : [])].slice(
+          0,
+          200,
+        ),
+      },
+      result: letter,
+    }),
+  );
 }
 
 export async function readWorldStore(userId: string) {
@@ -795,7 +927,7 @@ export async function readWorldStore(userId: string) {
     return null;
   }
 
-  const store = await readJsonFile<FileWorldStore>(
+  const store = await safeReadJson<FileWorldStore>(
     userFile(userId, "world.json"),
     { ...defaultWorldState },
   );
@@ -808,24 +940,27 @@ export async function readWorldStore(userId: string) {
   } satisfies FileWorldStore;
 }
 
-async function writeWorldStore(userId: string, store: FileWorldStore) {
-  await writeJsonFile(userFile(userId, "world.json"), store);
-}
-
 async function setFileWorldAppState(userId: string, key: string, value: string) {
-  const store = await readWorldStore(userId);
-
-  if (!store) {
+  if (!(await findFileUserById(userId))) {
     return;
   }
 
-  await writeWorldStore(userId, {
-    ...store,
-    appState: {
-      ...store.appState,
-      [key]: value,
-    },
-  });
+  await updateJsonFile<FileWorldStore, null>(
+    userFile(userId, "world.json"),
+    { ...defaultWorldState },
+    (store) => ({
+      next: {
+        ...defaultWorldState,
+        ...store,
+        worldStates: Array.isArray(store.worldStates) ? store.worldStates : [],
+        appState: {
+          ...(store.appState ?? {}),
+          [key]: value,
+        },
+      },
+      result: null,
+    }),
+  );
 }
 
 export async function listFileWorldStates(userId: string, take?: number) {
@@ -847,9 +982,7 @@ export async function createFileWorldState(
     scene: string;
   },
 ) {
-  const store = await readWorldStore(userId);
-
-  if (!store) {
+  if (!(await findFileUserById(userId))) {
     return null;
   }
 
@@ -866,13 +999,23 @@ export async function createFileWorldState(
     updatedAt: now,
   };
 
-  await writeWorldStore(userId, {
-    ...store,
-    ...input,
-    worldStates: [state, ...(store.worldStates ?? [])].slice(0, 200),
-  });
-
-  return state;
+  return updateJsonFile<FileWorldStore, FileWorldState>(
+    userFile(userId, "world.json"),
+    { ...defaultWorldState },
+    (store) => ({
+      next: {
+        ...defaultWorldState,
+        ...store,
+        ...input,
+        worldStates: [
+          state,
+          ...(Array.isArray(store.worldStates) ? store.worldStates : []),
+        ].slice(0, 200),
+        appState: store.appState ?? {},
+      },
+      result: state,
+    }),
+  );
 }
 
 export async function appendUserAction(
