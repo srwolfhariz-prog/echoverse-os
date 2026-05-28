@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { createJsonCompletion, isOpenAIConfigError, loadPrompt } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
-import { db } from "@/lib/db";
+import { createFileMemories } from "@/lib/file-user-store";
 import { memoryTypes } from "@/lib/constants";
 import { recordUserEvent } from "@/lib/user-memory";
 
@@ -71,14 +71,12 @@ export async function POST(request: Request) {
 
     const savedMemories =
       safeMemories.length > 0
-        ? await db.$transaction(
-            safeMemories.map((memory) => db.memory.create({ data: memory })),
-          )
+        ? await createFileMemories(userId, safeMemories)
         : [];
     if (savedMemories.length > 0) {
       await recordUserEvent(
         {
-          type: "memory.extracted",
+          type: "memory.created",
           payload: {
             count: savedMemories.length,
             sourceMessageId,

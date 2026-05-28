@@ -13,6 +13,9 @@ export function normalizeLocalAccountId(value: unknown) {
 export function localAccountIdToUserId(accountId: string) {
   const normalized = normalizeLocalAccountId(accountId);
 
-  return normalized ? `local-account:${normalized}` : "";
-}
+  if (!normalized) {
+    return "";
+  }
 
+  return normalized.startsWith("u_") ? normalized : `local-account:${normalized}`;
+}

@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { isOpenAIConfigError } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
-import { db } from "@/lib/db";
+import {
+  getFileAppStateValue,
+  listFileMemories,
+  listFileProfileDocuments,
+} from "@/lib/file-user-store";
 import {
   generateParallelLifeScript,
   parallelLifeScriptStateKey,
@@ -25,21 +29,15 @@ export async function POST(request: Request) {
 
     const { userId } = auth;
     const [profile, memories, storedScript] = await Promise.all([
-      db.profileDocument.findMany({ where: { userId } }),
-      db.memory.findMany({
-        where: { userId },
-        orderBy: [{ importance: "desc" }, { createdAt: "desc" }],
-        take: 80,
-      }),
-      db.userAppState.findUnique({
-        where: { userId_key: { userId, key: parallelLifeScriptStateKey } },
-      }),
+      listFileProfileDocuments(userId),
+      listFileMemories(userId, { sortByImportance: true, take: 80 }),
+      getFileAppStateValue(userId, parallelLifeScriptStateKey),
     ]);
 
-    if (storedScript?.value) {
+    if (storedScript) {
       try {
         return NextResponse.json({
-          life_script: JSON.parse(storedScript.value) as unknown,
+          life_script: JSON.parse(storedScript) as unknown,
           existing: true,
         });
       } catch {}
@@ -94,13 +92,14 @@ export async function POST(request: Request) {
   }
 }
 
-function getArchiveCompletedAt(profile: Array<{ updatedAt: Date }>) {
+function getArchiveCompletedAt(profile: Array<{ updatedAt: Date | string }>) {
   if (!profile.length) {
     return new Date().toISOString();
   }
 
   const timestamp = profile.reduce(
-    (earliest, document) => Math.min(earliest, document.updatedAt.getTime()),
+    (earliest, document) =>
+      Math.min(earliest, new Date(document.updatedAt).getTime()),
     Number.POSITIVE_INFINITY,
   );
 

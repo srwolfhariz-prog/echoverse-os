@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { createChatReply, isOpenAIConfigError, loadPrompt } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
-import { db } from "@/lib/db";
+import {
+  createFileConversationMessage,
+  listFileConversationMessages,
+} from "@/lib/file-user-store";
 import { recordUserEvent } from "@/lib/user-memory";
 
 export const runtime = "nodejs";
@@ -23,20 +26,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "message is required" }, { status: 400 });
     }
 
-    const userMessage = await db.conversationMessage.create({
-      data: {
-        userId,
-        role: "user",
-        content: message,
-        mode,
-      },
+    const userMessage = await createFileConversationMessage(userId, {
+      role: "user",
+      content: message,
+      mode,
     });
 
-    const recentMessages = await db.conversationMessage.findMany({
-      where: { mode, userId },
-      orderBy: { createdAt: "desc" },
-      take: 10,
-    });
+    const recentMessages = await listFileConversationMessages(userId, mode, 10);
 
     const prompt = await loadPrompt("echo-room.md");
     const reply = await createChatReply({
@@ -50,21 +46,18 @@ export async function POST(request: Request) {
         })),
     });
 
-    const assistantMessage = await db.conversationMessage.create({
-      data: {
-        userId,
-        role: "assistant",
-        content: reply,
-        mode,
-      },
+    const assistantMessage = await createFileConversationMessage(userId, {
+      role: "assistant",
+      content: reply,
+      mode,
     });
     await recordUserEvent(
       {
-        type: "chat.message_created",
+        type: "echo.message.sent",
         payload: {
           mode,
-          userMessageId: userMessage.id,
-          assistantMessageId: assistantMessage.id,
+          userMessageId: userMessage?.id,
+          assistantMessageId: assistantMessage?.id,
         },
       },
       userId,
@@ -72,8 +65,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       reply,
-      userMessageId: userMessage.id,
-      assistantMessageId: assistantMessage.id,
+      userMessageId: userMessage?.id,
+      assistantMessageId: assistantMessage?.id,
     });
   } catch (error) {
     console.error(error);

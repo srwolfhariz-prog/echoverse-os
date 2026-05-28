@@ -1,25 +1,25 @@
 import { NextResponse } from "next/server";
-import { randomInt } from "crypto";
 import {
   LOCAL_USER_COOKIE,
-  localAccountIdToUserId,
   normalizeLocalAccountId,
 } from "@/lib/local-user-session";
-import { db } from "@/lib/db";
 import {
-  getLocalAccountIdFromRequest,
-  getCurrentUserId,
-  getUserMemorySnapshot,
-  recordUserEvent,
-  setUserAppState,
-  updateCurrentUserAccount,
-} from "@/lib/user-memory";
+  appendUserAction,
+  findFileUserById,
+  loginFileUser,
+  readRecentUserActions,
+  readUserProfile,
+  registerFileUser,
+  updateUserProfile,
+  type FileProfile,
+  type FileUserIndexItem,
+} from "@/lib/file-user-store";
+import { getLocalAccountIdFromRequest } from "@/lib/user-memory";
 
 export const runtime = "nodejs";
 
-const userCenterStateKey = "user_center.profile";
 const defaultMotto = "在另一个角落里，也要认真成为自己。";
-const guestNickname = "未登录用户";
+const loggedOutNickname = "未登录用户";
 
 type UserCenterProfile = {
   accountId: string;
@@ -38,40 +38,12 @@ type UserCenterRequest = {
   profile?: Partial<UserCenterProfile>;
 };
 
-function parseStoredProfile(value: string | undefined) {
-  if (!value) {
-    return {};
-  }
-
-  try {
-    return JSON.parse(value) as Partial<UserCenterProfile>;
-  } catch {
-    return {};
-  }
+function normalizeUsername(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
-function normalizeText(value: string | undefined, fallback: string) {
-  const trimmed = value?.trim();
-
-  if (!trimmed || /[\u0080-\u009F\uFFFD]/.test(trimmed)) {
-    return fallback;
-  }
-
-  return trimmed;
-}
-
-function normalizeNickname(value: unknown) {
-  if (typeof value !== "string") {
-    return "";
-  }
-
-  const trimmed = value.trim();
-
-  if (!trimmed || /[\u0080-\u009F\uFFFD]/.test(trimmed)) {
-    return "";
-  }
-
-  return trimmed;
+function normalizePasswordHash(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
 }
 
 function createLoggedOutProfile(): UserCenterProfile {
@@ -79,105 +51,21 @@ function createLoggedOutProfile(): UserCenterProfile {
     accountId: "",
     loggedIn: false,
     motto: "",
-    nickname: guestNickname,
+    nickname: loggedOutNickname,
   };
 }
 
-async function findRegisteredProfileByNickname(nickname: string) {
-  const normalizedNickname = normalizeNickname(nickname);
-
-  if (!normalizedNickname) {
-    return null;
-  }
-
-  const states = await db.userAppState.findMany({
-    where: { key: userCenterStateKey },
-    select: { userId: true, value: true },
-  });
-
-  for (const state of states) {
-    const profile = parseStoredProfile(state.value);
-
-    if (
-      profile.passwordHash &&
-      normalizeNickname(profile.nickname) === normalizedNickname
-    ) {
-      return {
-        profile,
-        userId: state.userId,
-      };
-    }
-  }
-
-  return null;
-}
-
-async function accountIdExists(accountId: string) {
-  const userId = localAccountIdToUserId(accountId);
-
-  if (!userId) {
-    return true;
-  }
-
-  const existingUser = await db.userAccount.findUnique({
-    where: { id: userId },
-    select: { id: true },
-  });
-
-  if (existingUser) {
-    return true;
-  }
-
-  const states = await db.userAppState.findMany({
-    where: { key: userCenterStateKey },
-    select: { value: true },
-  });
-
-  return states.some((state) => parseStoredProfile(state.value).accountId === accountId);
-}
-
-async function createUniqueAccountId() {
-  for (let index = 0; index < 100; index += 1) {
-    const accountId = randomInt(0, 1_000_000).toString().padStart(6, "0");
-
-    if (!(await accountIdExists(accountId))) {
-      return accountId;
-    }
-  }
-
-  throw new Error("账号 ID 暂时生成失败，请稍后再试。");
-}
-
-function normalizeProfile(
-  user: { displayName: string | null; id: string },
-  stored?: Partial<UserCenterProfile>,
-  patch?: Partial<UserCenterProfile>,
+function toResponseProfile(
+  user: FileUserIndexItem,
+  profile: FileProfile | null,
+  loggedIn = true,
 ): UserCenterProfile {
-  const accountId = patch?.accountId?.trim() || stored?.accountId?.trim() || user.id;
-  const avatarDataUrl =
-    typeof patch?.avatarDataUrl === "string"
-      ? patch.avatarDataUrl
-      : stored?.avatarDataUrl;
-  const nickname = normalizeText(
-    patch?.nickname || stored?.nickname || user.displayName || undefined,
-    guestNickname,
-  );
-  const motto = normalizeText(patch?.motto || stored?.motto, defaultMotto);
-  const loggedIn =
-    typeof patch?.loggedIn === "boolean"
-      ? patch.loggedIn
-      : Boolean(stored?.loggedIn);
-
   return {
-    accountId,
-    avatarDataUrl,
+    accountId: user.id,
+    avatarDataUrl: profile?.avatarDataUrl,
     loggedIn,
-    motto,
-    nickname,
-    passwordHash:
-      typeof patch?.passwordHash === "string"
-        ? patch.passwordHash
-        : stored?.passwordHash,
+    motto: profile?.motto ?? defaultMotto,
+    nickname: profile?.displayName ?? profile?.username ?? user.username,
   };
 }
 
@@ -203,140 +91,191 @@ function clearLocalSessionCookie(response: NextResponse) {
   return response;
 }
 
-export async function GET(request: Request) {
-  const userId = await getCurrentUserId(request);
-  const snapshot = await getUserMemorySnapshot(userId);
-  const profile = normalizeProfile(
-    snapshot.user,
-    parseStoredProfile(snapshot.appState[userCenterStateKey]),
+function userDataSaveError() {
+  return NextResponse.json(
+    { error: "服务器暂时无法保存用户数据，请稍后再试" },
+    { status: 500 },
   );
-  const responseProfile = profile.loggedIn ? profile : createLoggedOutProfile();
-  const response = NextResponse.json({
-    eventLogs: snapshot.eventLogs,
-    profile: responseProfile,
-  });
-
-  return profile.loggedIn
-    ? withLocalSessionCookie(response, profile)
-    : clearLocalSessionCookie(response);
 }
 
-export async function PATCH(request: Request) {
-  const body = (await request.json()) as UserCenterRequest;
-  const eventType = typeof body.event?.type === "string" ? body.event.type : "";
-  const requestedNickname = normalizeNickname(body.profile?.nickname);
-  const requestedPasswordHash =
-    typeof body.profile?.passwordHash === "string"
-      ? body.profile.passwordHash
-      : "";
-  const currentAccountId = getLocalAccountIdFromRequest(request);
-  let requestedAccountId = normalizeLocalAccountId(body.profile?.accountId);
-  let userId = await getCurrentUserId(request);
-  let snapshot = await getUserMemorySnapshot(userId);
-  let storedProfile = parseStoredProfile(snapshot.appState[userCenterStateKey]);
-  let profilePatch: Partial<UserCenterProfile>;
+export async function GET(request: Request) {
+  try {
+    const accountId = normalizeLocalAccountId(getLocalAccountIdFromRequest(request));
+    const user = accountId ? await findFileUserById(accountId) : null;
 
-  if (eventType === "user.registered") {
-    if (!requestedNickname || !requestedPasswordHash) {
-      return NextResponse.json({ error: "请输入昵称和密码。" }, { status: 400 });
-    }
-
-    const existingProfile = await findRegisteredProfileByNickname(requestedNickname);
-
-    if (existingProfile) {
-      return NextResponse.json(
-        { error: "这个昵称已经注册过了，请直接登录。" },
-        { status: 409 },
+    if (!user) {
+      return clearLocalSessionCookie(
+        NextResponse.json({
+          eventLogs: [],
+          profile: createLoggedOutProfile(),
+        }),
       );
     }
 
-    requestedAccountId = await createUniqueAccountId();
-    userId = localAccountIdToUserId(requestedAccountId);
-    snapshot = await getUserMemorySnapshot(userId);
-    storedProfile = parseStoredProfile(snapshot.appState[userCenterStateKey]);
-    profilePatch = {
-      accountId: requestedAccountId,
-      avatarDataUrl:
-        typeof body.profile?.avatarDataUrl === "string"
-          ? body.profile.avatarDataUrl
-          : undefined,
-      loggedIn: true,
-      nickname: requestedNickname,
-      passwordHash: requestedPasswordHash,
-    };
-  } else if (eventType === "user.logged_in") {
-    if (!requestedNickname || !requestedPasswordHash) {
-      return NextResponse.json({ error: "请输入昵称和密码。" }, { status: 400 });
+    const [profile, eventLogs] = await Promise.all([
+      readUserProfile(user.id),
+      readRecentUserActions(user.id),
+    ]);
+    const responseProfile = toResponseProfile(user, profile);
+    const response = NextResponse.json({
+      eventLogs,
+      profile: responseProfile,
+    });
+
+    return withLocalSessionCookie(response, responseProfile);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(error);
     }
 
-    const existingProfile = await findRegisteredProfileByNickname(requestedNickname);
+    return userDataSaveError();
+  }
+}
 
-    if (!existingProfile) {
-      return NextResponse.json({ error: "未注册" }, { status: 404 });
+export async function PATCH(request: Request) {
+  try {
+    const body = (await request.json()) as UserCenterRequest;
+    const eventType = typeof body.event?.type === "string" ? body.event.type : "";
+    const username = normalizeUsername(body.profile?.nickname);
+    const passwordHash = normalizePasswordHash(body.profile?.passwordHash);
+
+    if (eventType === "user.registered") {
+      if (!username || !passwordHash) {
+        return NextResponse.json(
+          { error: "请输入用户名和密码。" },
+          { status: 400 },
+        );
+      }
+
+      try {
+        const user = await registerFileUser({
+          avatarDataUrl:
+            typeof body.profile?.avatarDataUrl === "string"
+              ? body.profile.avatarDataUrl
+              : undefined,
+          passwordHash,
+          username,
+        });
+        const profile = await readUserProfile(user.id);
+        const responseProfile = toResponseProfile(user, profile);
+        const response = NextResponse.json({
+          eventLogs: await readRecentUserActions(user.id),
+          profile: responseProfile,
+        });
+
+        return withLocalSessionCookie(response, responseProfile);
+      } catch (error) {
+        if (error instanceof Error && error.message === "USERNAME_EXISTS") {
+          return NextResponse.json(
+            { error: "该用户名已注册" },
+            { status: 409 },
+          );
+        }
+
+        if (process.env.NODE_ENV !== "production") {
+          console.error(error);
+        }
+
+        return userDataSaveError();
+      }
     }
 
-    if (existingProfile.profile.passwordHash !== requestedPasswordHash) {
-      return NextResponse.json({ error: "用户名/密码错误" }, { status: 401 });
+    if (eventType === "user.logged_in") {
+      if (!username || !passwordHash) {
+        return NextResponse.json(
+          { error: "请输入用户名和密码。" },
+          { status: 400 },
+        );
+      }
+
+      try {
+        const user = await loginFileUser(username, passwordHash);
+        const profile = await readUserProfile(user.id);
+        const responseProfile = toResponseProfile(user, profile);
+        const response = NextResponse.json({
+          eventLogs: await readRecentUserActions(user.id),
+          profile: responseProfile,
+        });
+
+        return withLocalSessionCookie(response, responseProfile);
+      } catch (error) {
+        if (error instanceof Error && error.message === "USERNAME_NOT_FOUND") {
+          return NextResponse.json(
+            { error: "用户名未注册" },
+            { status: 404 },
+          );
+        }
+
+        if (error instanceof Error && error.message === "PASSWORD_MISMATCH") {
+          return NextResponse.json(
+            { error: "用户名或密码错误" },
+            { status: 401 },
+          );
+        }
+
+        if (process.env.NODE_ENV !== "production") {
+          console.error(error);
+        }
+
+        return userDataSaveError();
+      }
     }
 
-    userId = existingProfile.userId;
-    snapshot = await getUserMemorySnapshot(userId);
-    storedProfile = parseStoredProfile(snapshot.appState[userCenterStateKey]);
-    profilePatch = {
-      ...storedProfile,
-      accountId: normalizeLocalAccountId(storedProfile.accountId),
-      loggedIn: true,
-      nickname: normalizeNickname(storedProfile.nickname) || requestedNickname,
-      passwordHash: requestedPasswordHash,
-    };
-  } else if (eventType === "user.logged_out") {
-    profilePatch = {
-      ...storedProfile,
-      accountId: normalizeLocalAccountId(storedProfile.accountId) || currentAccountId,
-      loggedIn: false,
-    };
-  } else {
-    profilePatch = {
-      ...body.profile,
-      accountId: requestedAccountId || body.profile?.accountId || currentAccountId,
-    };
+    const accountId = normalizeLocalAccountId(getLocalAccountIdFromRequest(request));
+    const user = accountId ? await findFileUserById(accountId) : null;
+
+    if (!user) {
+      return clearLocalSessionCookie(
+        NextResponse.json(
+          { error: "请登录后再使用这个功能。" },
+          { status: 401 },
+        ),
+      );
+    }
+
+    if (eventType === "user.logged_out") {
+      await appendUserAction(user.id, "user.logged_out", body.event?.payload ?? {});
+
+      return clearLocalSessionCookie(
+        NextResponse.json({
+          eventLogs: await readRecentUserActions(user.id),
+          profile: createLoggedOutProfile(),
+        }),
+      );
+    }
+
+    const patch: Partial<FileProfile> = {};
+
+    if (typeof body.profile?.avatarDataUrl === "string") {
+      patch.avatarDataUrl = body.profile.avatarDataUrl;
+    }
+
+    if (typeof body.profile?.motto === "string") {
+      patch.motto = body.profile.motto.trim() || defaultMotto;
+    }
+
+    if (Object.keys(patch).length > 0) {
+      await updateUserProfile(user.id, patch);
+      await appendUserAction(user.id, "user.profile_updated", {
+        fields: Object.keys(patch),
+      });
+    } else if (eventType) {
+      await appendUserAction(user.id, eventType, body.event?.payload ?? {});
+    }
+
+    const profile = await readUserProfile(user.id);
+    const responseProfile = toResponseProfile(user, profile);
+    const response = NextResponse.json({
+      eventLogs: await readRecentUserActions(user.id),
+      profile: responseProfile,
+    });
+
+    return withLocalSessionCookie(response, responseProfile);
+  } catch (error) {
+    if (process.env.NODE_ENV !== "production") {
+      console.error(error);
+    }
+
+    return userDataSaveError();
   }
-
-  const profile = normalizeProfile(
-    snapshot.user,
-    storedProfile,
-    profilePatch,
-  );
-
-  await setUserAppState(userCenterStateKey, profile, userId);
-
-  if (profile.loggedIn) {
-    await updateCurrentUserAccount({ displayName: profile.nickname }, userId);
-  }
-
-  if (typeof body.event?.type === "string") {
-    await recordUserEvent(
-      {
-        type: body.event.type,
-        payload: {
-          ...(typeof body.event.payload === "object" && body.event.payload
-            ? body.event.payload
-            : {}),
-          accountId: profile.accountId,
-        },
-      },
-      userId,
-    );
-  }
-
-  const nextSnapshot = await getUserMemorySnapshot(userId);
-  const responseProfile = profile.loggedIn ? profile : createLoggedOutProfile();
-  const response = NextResponse.json({
-    eventLogs: nextSnapshot.eventLogs,
-    profile: responseProfile,
-  });
-
-  return profile.loggedIn
-    ? withLocalSessionCookie(response, profile)
-    : clearLocalSessionCookie(response);
 }

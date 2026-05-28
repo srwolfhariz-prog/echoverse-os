@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { createJsonCompletion, isOpenAIConfigError, loadPrompt } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
-import { db } from "@/lib/db";
+import {
+  createFileLifeLetter,
+  listFileLetters,
+  listFileMemories,
+  listFileProfileDocuments,
+} from "@/lib/file-user-store";
 import { buildPersonaRuntimeDocuments } from "@/lib/persona-runtime";
 import { recordUserEvent } from "@/lib/user-memory";
 
@@ -93,11 +98,7 @@ export async function GET(request: Request) {
   }
 
   const { userId } = auth;
-  const letters = await db.lifeLetter.findMany({
-    where: { userId },
-    orderBy: { createdAt: "desc" },
-    take: 10,
-  });
+  const letters = await listFileLetters(userId, 10);
 
   return NextResponse.json({
     letters: letters.map((letter) => {
@@ -145,12 +146,8 @@ export async function POST(request: Request) {
     }
 
     const [profile, memories] = await Promise.all([
-      db.profileDocument.findMany({ where: { userId } }),
-      db.memory.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-      }),
+      listFileProfileDocuments(userId),
+      listFileMemories(userId, { take: 30 }),
     ]);
     const personaContext = buildPersonaRuntimeDocuments(profile, memories);
 
@@ -210,23 +207,20 @@ export async function POST(request: Request) {
           .slice(0, 5)
       : ["把此刻最困扰我的事写成一句话", "选一个五分钟内能开始的小动作"];
 
-    await db.lifeLetter.create({
-      data: {
-        userId,
-        question,
-        category,
-        answer: letter,
-        referencedMemoryIds: JSON.stringify({
-          referenced_memories: referencedMemories,
-          inner_voice: innerVoice,
-        }),
-        actionTitle,
-        actionSteps: JSON.stringify(actionSteps),
-      },
+    await createFileLifeLetter(userId, {
+      question,
+      category,
+      answer: letter,
+      referencedMemoryIds: JSON.stringify({
+        referenced_memories: referencedMemories,
+        inner_voice: innerVoice,
+      }),
+      actionTitle,
+      actionSteps: JSON.stringify(actionSteps),
     });
     await recordUserEvent(
       {
-        type: "life_letter.created",
+        type: "letter.generated",
         payload: {
           category,
           personaReady: true,

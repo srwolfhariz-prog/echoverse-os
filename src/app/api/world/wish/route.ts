@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { createJsonCompletion, isOpenAIConfigError, loadPrompt } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
-import { db } from "@/lib/db";
+import {
+  getFileAppStates,
+  listFileMemories,
+  listFileProfileDocuments,
+} from "@/lib/file-user-store";
 import { parallelLifeScriptStateKey } from "@/lib/parallel-life-script";
 import { buildPersonaRuntimeDocuments } from "@/lib/persona-runtime";
 import { recordUserEvent, setUserAppState } from "@/lib/user-memory";
@@ -48,20 +52,9 @@ export async function POST(request: Request) {
     }
 
     const [profile, memories, appStates] = await Promise.all([
-      db.profileDocument.findMany({ where: { userId } }),
-      db.memory.findMany({
-        where: { userId },
-        orderBy: { createdAt: "desc" },
-        take: 30,
-      }),
-      db.userAppState.findMany({
-        where: {
-          userId,
-          key: {
-            in: [latestWorldStateKey, parallelLifeScriptStateKey],
-          },
-        },
-      }),
+      listFileProfileDocuments(userId),
+      listFileMemories(userId, { take: 30 }),
+      getFileAppStates(userId, [latestWorldStateKey, parallelLifeScriptStateKey]),
     ]);
     const personaContext = buildPersonaRuntimeDocuments(profile, memories);
 

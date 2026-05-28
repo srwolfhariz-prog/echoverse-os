@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import { createJsonCompletion, isOpenAIConfigError, loadPrompt } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
-import { db } from "@/lib/db";
+import {
+  createFileWorldState,
+  getFileAppStates,
+  listFileLetters,
+  listFileMemories,
+  listFileProfileDocuments,
+  listFileWorldStates,
+} from "@/lib/file-user-store";
 import {
   normalizeParallelLifeScript,
   parallelLifeScriptStateKey,
@@ -63,35 +70,16 @@ export async function POST(request: Request) {
     const { userId } = auth;
     const [profile, memories, letters, previousWorlds, appStates] =
       await Promise.all([
-        db.profileDocument.findMany({ where: { userId } }),
-        db.memory.findMany({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-          take: 30,
-        }),
-        db.lifeLetter.findMany({
-          where: { userId },
-          orderBy: { createdAt: "desc" },
-          take: 10,
-        }),
-        db.worldState.findMany({
-          where: { userId },
-          orderBy: { updatedAt: "desc" },
-          take: 5,
-        }),
-        db.userAppState.findMany({
-          where: {
-            userId,
-            key: {
-              in: [
-                latestWorldStateKey,
-                parallelLifeScriptStateKey,
-                lifeRecordStateKey,
-                wishStateKey,
-              ],
-            },
-          },
-        }),
+        listFileProfileDocuments(userId),
+        listFileMemories(userId, { take: 30 }),
+        listFileLetters(userId, 10),
+        listFileWorldStates(userId, 5),
+        getFileAppStates(userId, [
+          latestWorldStateKey,
+          parallelLifeScriptStateKey,
+          lifeRecordStateKey,
+          wishStateKey,
+        ]),
       ]);
     const personaContext = buildPersonaRuntimeDocuments(profile, memories);
 
@@ -188,16 +176,19 @@ export async function POST(request: Request) {
     const nextHint =
       result.next_hint?.trim() || "明天，我会继续处理今天留下的那条线索。";
 
-    const state = await db.worldState.create({
-      data: {
-        userId,
-        mood,
-        scene,
-        energy,
-        clarity,
-        diary,
-      },
+    const state = await createFileWorldState(userId, {
+      mood,
+      scene,
+      energy,
+      clarity,
+      diary,
     });
+    if (!state) {
+      return NextResponse.json(
+        { error: "服务器暂时无法保存用户数据，请稍后再试" },
+        { status: 500 },
+      );
+    }
     const worldPayload = {
       ...state,
       day_title: result.day_title?.trim() || "我把今天认真过完了",
@@ -257,7 +248,7 @@ export async function POST(request: Request) {
     ]);
     await recordUserEvent(
       {
-        type: "world.day_generated",
+        type: "world.diary.generated",
         payload: {
           worldStateId: state.id,
           mood,
@@ -372,13 +363,14 @@ function normalizeWishReply(value: unknown, message: string) {
   return "我收到了，像隔着很远的灯亮了一下，今天我会带着它继续往前走。";
 }
 
-function getArchiveCompletedAt(profile: Array<{ updatedAt: Date }>) {
+function getArchiveCompletedAt(profile: Array<{ updatedAt: Date | string }>) {
   if (!profile.length) {
     return new Date().toISOString();
   }
 
   const timestamp = profile.reduce(
-    (earliest, document) => Math.min(earliest, document.updatedAt.getTime()),
+    (earliest, document) =>
+      Math.min(earliest, new Date(document.updatedAt).getTime()),
     Number.POSITIVE_INFINITY,
   );
 

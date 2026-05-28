@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireApiUserId } from "@/lib/api-auth";
 import { profileSections, sortProfileSections } from "@/lib/constants";
-import { db } from "@/lib/db";
+import {
+  listFileMemories,
+  listFileProfileDocuments,
+} from "@/lib/file-user-store";
 import {
   buildPersonaRuntimeDocuments,
   personaRuntimeSections,
@@ -18,8 +21,8 @@ export async function GET(request: Request) {
 
   const { userId } = auth;
   const [sections, memories] = await Promise.all([
-    db.profileDocument.findMany({ where: { userId } }),
-    db.memory.findMany({ where: { userId }, orderBy: { createdAt: "desc" } }),
+    listFileProfileDocuments(userId),
+    listFileMemories(userId),
   ]);
   const sortedSections = sortProfileSections(sections);
   const sectionMap = new Map(sortedSections.map((item) => [item.section, item]));

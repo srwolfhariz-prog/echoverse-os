@@ -228,7 +228,7 @@ function clearLoggedOutScopedState() {
 }
 
 function normalizeCredentialNickname(nickname: string) {
-  return nickname.trim();
+  return nickname.trim().toLowerCase();
 }
 
 async function createPasswordHash(nickname: string, password: string) {
@@ -362,7 +362,9 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
           error?: string;
         } | null;
 
-        throw new Error(data?.error || "本地用户信息暂时没有保存成功。");
+        throw new Error(
+          data?.error || "服务器暂时无法保存用户数据，请稍后再试",
+        );
       }
 
       const data = (await response.json()) as {
@@ -404,11 +406,13 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
     } | null;
 
     if (!response.ok) {
-      throw new Error(data?.error || "本地登录暂时没有完成，请稍后再试。");
+      throw new Error(
+        data?.error || "服务器暂时无法保存用户数据，请稍后再试",
+      );
     }
 
     if (!data?.profile) {
-      throw new Error("本地登录暂时没有完成，请稍后再试。");
+      throw new Error("服务器暂时无法保存用户数据，请稍后再试");
     }
 
     writeUserCenter(data.profile);
@@ -577,7 +581,7 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
       setAuthError(
         error instanceof Error
           ? error.message
-          : "本地登录暂时没有完成，请稍后再试。",
+          : "服务器暂时无法保存用户数据，请稍后再试",
       );
     } finally {
       setAuthSubmitting(false);

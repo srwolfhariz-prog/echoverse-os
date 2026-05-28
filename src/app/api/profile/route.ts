@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireApiUserId } from "@/lib/api-auth";
 import { profileSections, sortProfileSections } from "@/lib/constants";
-import { db } from "@/lib/db";
+import {
+  listFileProfileDocuments,
+  upsertFileProfileDocument,
+} from "@/lib/file-user-store";
 import {
   recordUserEvent,
   updateUserMemoryDocument,
@@ -17,9 +20,7 @@ export async function GET(request: Request) {
   }
 
   const { userId } = auth;
-  const sections = await db.profileDocument.findMany({
-    where: { userId },
-  });
+  const sections = await listFileProfileDocuments(userId);
 
   return NextResponse.json({
     sections: sortProfileSections(sections),
@@ -52,11 +53,19 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "unknown profile section" }, { status: 400 });
   }
 
-  const saved = await db.profileDocument.upsert({
-    where: { userId_section: { userId, section } },
-    update: { userId, title, content },
-    create: { userId, section, title, content },
+  const saved = await upsertFileProfileDocument(userId, {
+    section,
+    title,
+    content,
   });
+
+  if (!saved) {
+    return NextResponse.json(
+      { error: "服务器暂时无法保存用户数据，请稍后再试" },
+      { status: 500 },
+    );
+  }
+
   await updateUserMemoryDocument(
     {
       profileSnapshot: { section: saved.section, title: saved.title },

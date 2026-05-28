@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import { createJsonCompletion, isOpenAIConfigError, loadPrompt } from "@/lib/ai";
 import { requireApiUserId } from "@/lib/api-auth";
 import { profileSections, sortProfileSections } from "@/lib/constants";
-import { db } from "@/lib/db";
+import {
+  getFileAppStates,
+  listFileMemories,
+  upsertFileProfileDocuments,
+} from "@/lib/file-user-store";
 import {
   personaProgressConfig,
   personaQuestions,
@@ -59,17 +63,12 @@ export async function POST(request: Request) {
 
     const { userId } = auth;
     const [memories, appStates] = await Promise.all([
-      db.memory.findMany({
-        where: { userId },
-        orderBy: [{ importance: "desc" }, { createdAt: "desc" }],
-        take: 80,
-      }),
-      db.userAppState.findMany({
-        where: {
-          userId,
-          key: { in: [echoRoomStateKey, typologyStateKey, stageEchoStateKey] },
-        },
-      }),
+      listFileMemories(userId, { sortByImportance: true, take: 80 }),
+      getFileAppStates(userId, [
+        echoRoomStateKey,
+        typologyStateKey,
+        stageEchoStateKey,
+      ]),
     ]);
     const appStateMap = new Map(appStates.map((state) => [state.key, state.value]));
     const personaState = parseStoredJson<StoredPersonaState>(
@@ -177,52 +176,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const savedSections = await db.$transaction(
-      safeSections.map((section) =>
-        db.profileDocument.upsert({
-          where: {
-            userId_section: {
-              userId,
-              section: section.section,
-            },
-          },
-          update: {
-            userId,
-            title: section.title,
-            content: section.content,
-          },
-          create: {
-            userId,
-            section: section.section,
-            title: section.title,
-            content: section.content,
-          },
-        }),
-      ),
-    );
+    const savedSections = await upsertFileProfileDocuments(userId, safeSections);
     const runtimeDocuments = createPersonaRuntimeProfileDocuments(
       savedSections,
       memories,
     );
 
-    await db.$transaction(
-      runtimeDocuments.map((document) =>
-        db.profileDocument.upsert({
-          where: {
-            userId_section: {
-              userId,
-              section: document.section,
-            },
-          },
-          update: {
-            userId,
-            title: document.title,
-            content: document.content,
-          },
-          create: { userId, ...document },
-        }),
-      ),
-    );
+    await upsertFileProfileDocuments(userId, runtimeDocuments);
     const soulDocument =
       runtimeDocuments.find((document) => document.section === "soul")
         ?.content ?? "";

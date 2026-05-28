@@ -25,15 +25,14 @@ The V1 MVP focuses on one complete loop:
 - **Echo Profile**: editable Soul Document sections generated from memories.
 - **Life Letters**: reflective replies based on profile and recent memories.
 - **Parallel World Lite**: emotional scene, daily state, poetic diary.
-- **Export**: downloads `echo-profile.zip` with Markdown sections and JSON.
+- **Export**: downloads the Echo Profile as a Word-compatible document.
+- **File-backed user data**: V1 stores accounts, memories, logs, letters, profiles, and world state in `.echoverse-data/`.
 
 ## Tech Stack
 
 - Next.js App Router
 - TypeScript
 - TailwindCSS
-- Prisma
-- SQLite
 - OpenAI-compatible GPT API
 - Framer Motion
 - Lucide React
@@ -43,9 +42,6 @@ The V1 MVP focuses on one complete loop:
 
 ```bash
 npm install
-npm run db:generate
-npm run db:push
-npm run db:seed
 npm run dev
 ```
 
@@ -60,7 +56,6 @@ http://127.0.0.1:3000
 Create `.env`:
 
 ```bash
-DATABASE_URL="file:./dev.db"
 GPT_API_KEY="your_gpt_api_key"
 GPT_BASE_URL="https://your-provider.example/v1"
 GPT_MODEL="gpt-4.1-mini"
@@ -77,22 +72,36 @@ OPENAI_MODEL=""
 
 Without `GPT_API_KEY` or `OPENAI_API_KEY`, the static UI still works, but AI routes will return warm configuration errors. Use `GET /api/ai/status` to inspect the active provider config, and `POST /api/ai/status` after login to run a small live connectivity test.
 
-## Database
+## User Data
 
-Prisma models:
+V1 uses a server-local file database rooted at:
 
-- `ConversationMessage`
-- `Memory`
-- `ProfileDocument`
-- `LifeLetter`
-- `WorldState`
+```text
+.echoverse-data/
+```
 
-Useful commands:
+The backend creates the directory automatically if it does not exist. Each registered user gets an isolated directory:
+
+```text
+.echoverse-data/users/{userId}/
+```
+
+User data files:
+
+- `profile.json`: account profile, avatar, motto, login timestamps.
+- `memory.json`: persona progress, app state, conversations, memories, profile documents, Soul/Agents runtime documents.
+- `actions.jsonl`: append-only user operation log.
+- `letters.json`: life-letter history.
+- `world.json`: parallel-world state, scripts, day records, wishes.
+
+For production, make sure the app process can write to `.echoverse-data/`, and back this directory up regularly. Do not commit it to Git.
+
+Production run:
 
 ```bash
-npm run db:generate
-npm run db:push
-npm run db:seed
+npm ci
+npm run build
+npm run start
 ```
 
 ## Screenshots
@@ -110,12 +119,13 @@ Screenshots can be added here:
 **V1**
 
 - Static polished WebUI
-- Echo Room chat API
+- Register/login with server-local file persistence
+- User-isolated memory and action logs
+- Echo Room questionnaire and persona generation
 - Memory extraction
-- Echo Profile generation and editing
+- Echo Profile generation, editing, and export
 - Life Letter generation
-- Parallel World daily diary
-- ZIP export
+- Parallel World daily diary and wish/reply loop
 
 **V2**
 
@@ -135,7 +145,7 @@ Screenshots can be added here:
 
 ## Privacy Notes
 
-Echoverse OS stores personal memories locally in SQLite by default. Users can read, edit, and export their Echo Profile. Future cloud or multi-device versions should add explicit consent, encryption, deletion, and data portability controls before syncing sensitive memory data.
+Echoverse OS V1 stores personal memories in the server-local `.echoverse-data/` directory. Users can read, edit, and export their Echo Profile. Future cloud or multi-device versions should add explicit consent, encryption, deletion, backup, and data portability controls before syncing sensitive memory data.
 
 ## Safety Notes
 
