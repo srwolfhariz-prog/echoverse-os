@@ -19,7 +19,9 @@ export function getLocalAccountId(options: LocalUserHeaderOptions = {}) {
   }
 
   try {
-    const stored = window.localStorage.getItem(USER_CENTER_STORAGE_KEY);
+    window.localStorage.removeItem(USER_CENTER_STORAGE_KEY);
+
+    const stored = window.sessionStorage.getItem(USER_CENTER_STORAGE_KEY);
     const parsed = stored ? (JSON.parse(stored) as LocalUserSnapshot) : {};
 
     if (!options.includeLoggedOut && !parsed.loggedIn) {

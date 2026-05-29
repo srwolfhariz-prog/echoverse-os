@@ -13,7 +13,6 @@ import {
   type FileUserMemoryDocument,
 } from "@/lib/file-user-store";
 import {
-  LOCAL_USER_COOKIE,
   LOCAL_USER_HEADER,
   localAccountIdToUserId,
   normalizeLocalAccountId,
@@ -67,40 +66,14 @@ function isProfileArchiveReady(documents: ProfileDocumentLike[]) {
   );
 }
 
-function readCookieValue(cookieHeader: string | null, key: string) {
-  if (!cookieHeader) {
-    return "";
-  }
-
-  const cookie = cookieHeader
-    .split(";")
-    .map((item) => item.trim())
-    .find((item) => item.startsWith(`${key}=`));
-
-  if (!cookie) {
-    return "";
-  }
-
-  try {
-    return decodeURIComponent(cookie.slice(key.length + 1));
-  } catch {
-    return cookie.slice(key.length + 1);
-  }
-}
-
 export function getLocalAccountIdFromRequest(request?: Request) {
   if (!request) {
     return "";
   }
 
-  const headerAccountId = normalizeLocalAccountId(
+  return normalizeLocalAccountId(
     request.headers.get(LOCAL_USER_HEADER),
   );
-  const cookieAccountId = normalizeLocalAccountId(
-    readCookieValue(request.headers.get("cookie"), LOCAL_USER_COOKIE),
-  );
-
-  return headerAccountId || cookieAccountId;
 }
 
 export async function getCurrentUserId(request?: Request) {

@@ -108,7 +108,9 @@ function readStoredUserCenter(): UserCenterState {
   }
 
   try {
-    const stored = window.localStorage.getItem(USER_CENTER_STORAGE_KEY);
+    window.localStorage.removeItem(USER_CENTER_STORAGE_KEY);
+
+    const stored = window.sessionStorage.getItem(USER_CENTER_STORAGE_KEY);
     const parsed = stored ? (JSON.parse(stored) as Partial<UserCenterState>) : {};
 
     return {
@@ -217,6 +219,8 @@ function clearBrowserSessionCookie() {
 
 function clearLoggedOutScopedState() {
   window.sessionStorage.removeItem(pendingAuthRequestStorageKey);
+  window.sessionStorage.removeItem(USER_CENTER_STORAGE_KEY);
+  window.localStorage.removeItem(USER_CENTER_STORAGE_KEY);
 
   for (let index = window.localStorage.length - 1; index >= 0; index -= 1) {
     const key = window.localStorage.key(index);
@@ -304,7 +308,8 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
     setMottoDraft(nextUser.motto);
 
     if (typeof window !== "undefined") {
-      window.localStorage.setItem(USER_CENTER_STORAGE_KEY, JSON.stringify(nextUser));
+      window.localStorage.removeItem(USER_CENTER_STORAGE_KEY);
+      window.sessionStorage.setItem(USER_CENTER_STORAGE_KEY, JSON.stringify(nextUser));
       window.dispatchEvent(new Event(userCenterChangeEvent));
     }
   }

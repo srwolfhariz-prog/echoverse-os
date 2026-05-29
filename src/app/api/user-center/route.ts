@@ -71,11 +71,7 @@ function toResponseProfile(
 
 function withLocalSessionCookie(response: NextResponse, profile: UserCenterProfile) {
   if (profile.loggedIn && profile.accountId) {
-    response.cookies.set(LOCAL_USER_COOKIE, profile.accountId, {
-      maxAge: 60 * 60 * 24 * 365 * 5,
-      path: "/",
-      sameSite: "lax",
-    });
+    return clearLocalSessionCookie(response);
   }
 
   return response;
