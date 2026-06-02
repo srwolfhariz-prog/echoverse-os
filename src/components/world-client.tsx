@@ -167,17 +167,41 @@ function normalizeLifeRecords(records: LifeRecord[]) {
   });
 }
 
+function compactStatusKeywords(value: string, maxItems = 3) {
+  const normalized = value
+    .replace(/^我今天在/, "")
+    .replace(/^今天/, "")
+    .replace(/经历了/g, "")
+    .replace(/心情是/g, "")
+    .replace(/当前/g, "")
+    .replace(/主要所在/g, "")
+    .replace(/有一点/g, "")
+    .trim();
+  const parts = normalized
+    .split(/[，,、/／|；;。.!！?？]|以及|并且|同时|正在|开始|完成|收到|准备|经历|和|与|但|却/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => (item.length > 12 ? item.slice(0, 12) : item))
+    .filter(Boolean);
+  const keywords = parts.length > 0 ? parts : [normalized.slice(0, 10)];
+
+  return Array.from(new Set(keywords)).slice(0, maxItems).join(" / ");
+}
+
 function normalizeWorldData(data: Partial<WorldState>, current: WorldState) {
   return {
-    mood: data.mood?.trim() || current.mood,
+    mood: compactStatusKeywords(data.mood?.trim() || current.mood, 2),
     scene: data.scene?.trim() || current.scene,
     energy: clampScore(data.energy ?? current.energy),
     clarity: clampScore(data.clarity ?? current.clarity),
     diary: data.diary?.trim() || current.diary,
     day_title: data.day_title?.trim() || current.day_title,
-    location: data.location?.trim() || current.location,
-    occupation: data.occupation?.trim() || current.occupation,
-    event: data.event?.trim() || current.event,
+    location: compactStatusKeywords(data.location?.trim() || current.location, 3),
+    occupation: compactStatusKeywords(
+      data.occupation?.trim() || current.occupation,
+      3,
+    ),
+    event: compactStatusKeywords(data.event?.trim() || current.event, 3),
     happiness: clampScore(data.happiness ?? current.happiness),
     anxiety: clampScore(data.anxiety ?? current.anxiety),
     relationship: clampScore(data.relationship ?? current.relationship),

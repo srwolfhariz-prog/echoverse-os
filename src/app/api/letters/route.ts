@@ -53,6 +53,14 @@ function parseJsonArray(value: string | null | undefined) {
   }
 }
 
+function truncatePromptText(value: string, maxLength: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}...`
+    : normalized;
+}
+
 function parseLetterMeta(value: string | null | undefined): StoredLetterMeta {
   if (!value) {
     return { referenced_memories: [], inner_voice: null };
@@ -112,12 +120,15 @@ export async function GET(request: Request) {
         inner_voice:
           meta.inner_voice ??
           buildFallbackInnerVoice(
-            "我在这封信里看见了自己真正卡住的地方。",
+            "你在这封信里露出了自己真正卡住的地方。",
           ),
         referenced_memories: meta.referenced_memories,
         action: {
-          title: letter.actionTitle ?? "先做一个十分钟内能完成的小动作",
-          steps: parseJsonArray(letter.actionSteps),
+          title: normalizeActionText(
+            letter.actionTitle,
+            "你先做一个十分钟内能完成的小动作",
+          ),
+          steps: normalizeActionSteps(parseJsonArray(letter.actionSteps)),
         },
         createdAt: letter.createdAt,
       };
@@ -169,12 +180,15 @@ export async function POST(request: Request) {
           question,
           category,
           profile_ready: true,
-          soul_document: personaContext.soulDocument,
-          agents_document: personaContext.agentsDocument,
-          profile_sections: personaContext.visibleSections,
+          soul_document: truncatePromptText(personaContext.soulDocument, 5200),
+          agents_document: truncatePromptText(personaContext.agentsDocument, 3600),
+          profile_sections: personaContext.visibleSections.map((section) => ({
+            ...section,
+            content: truncatePromptText(section.content, 1800),
+          })),
           recent_memories: memories.map((memory) => ({
             type: memory.type,
-            content: memory.content,
+            content: truncatePromptText(memory.content, 360),
             emotion: memory.emotion,
             importance: memory.importance,
             confidence: memory.confidence,
@@ -185,11 +199,13 @@ export async function POST(request: Request) {
         2,
       ),
       temperature: 0.62,
+      timeoutMs: 65_000,
+      maxRetries: 0,
     });
 
     const letter = formatLetter(
       result.letter?.trim() ||
-        "我读见了这句话里真正想被接住的部分。先慢一点，不急着立刻给人生定论，把今天能承受的一小步拿回来，就已经是在往前走。",
+        "你好，我知道你这句话里真正想被接住的部分。先慢一点，不急着立刻给人生定论，把今天能承受的一小步拿回来，就已经是在往前走。",
     );
     const innerVoice = buildInnerVoice(result.inner_voice);
     const referencedMemories = Array.isArray(result.referenced_memories)
@@ -197,17 +213,15 @@ export async function POST(request: Request) {
           .filter((item) => typeof item === "string")
           .slice(0, 8)
       : [];
-    const actionTitle =
-      result.action?.title?.trim() || "先做一个十分钟内能完成的小动作";
+    const actionTitle = normalizeActionText(
+      result.action?.title,
+      "你先做一个十分钟内能完成的小动作",
+    );
     const actionSteps = Array.isArray(result.action?.steps)
-      ? result.action.steps
-          .filter((item) => typeof item === "string")
-          .map((item) => item.trim())
-          .filter(Boolean)
-          .slice(0, 5)
-      : ["把此刻最困扰我的事写成一句话", "选一个五分钟内能开始的小动作"];
+      ? normalizeActionSteps(result.action.steps)
+      : ["你把此刻最困扰的事写成一句话", "你选一个五分钟内能开始的小动作"];
 
-    await createFileLifeLetter(userId, {
+    const savedLetter = await createFileLifeLetter(userId, {
       question,
       category,
       answer: letter,
@@ -239,6 +253,10 @@ export async function POST(request: Request) {
         steps: actionSteps,
       },
       persona_ready: true,
+      id: savedLetter?.id,
+      question,
+      category,
+      createdAt: savedLetter?.createdAt,
     });
   } catch (error) {
     console.error(error);
@@ -265,17 +283,17 @@ function sanitizeStoredInnerVoice(value: unknown): InnerVoice | null {
   }
 
   return {
-    title: title || "我在这封信里看见了自己真正卡住的地方。",
+    title: title || "你在这封信里露出了自己真正卡住的地方。",
     content:
       content ||
-      "我此刻真正需要的不是立刻解决全部人生，而是先把心里最痛的那一小块看清楚。",
+      "你此刻真正需要的不是立刻解决全部人生，而是先把心里最痛的那一小块看清楚。",
     signals: normalizeSignals(source.signals),
   };
 }
 
 function buildInnerVoice(value: LifeLetterResponse["inner_voice"]) {
   const fallback = buildFallbackInnerVoice(
-    "我真正卡住的不是这件事本身，而是害怕再一次失望。",
+    "你真正卡住的不是这件事本身，而是害怕再一次失望。",
   );
 
   if (!value) {
@@ -293,8 +311,8 @@ function buildFallbackInnerVoice(title: string): InnerVoice {
   return {
     title,
     content:
-      "我在这次倾诉里看见了自己的疲惫、委屈和不甘：我想往前走，但我也害怕又一次把希望交出去之后落空。",
-    signals: ["我很疲惫", "我害怕再次落空", "我还不甘心"],
+      "你在这次倾诉里露出了自己的疲惫、委屈和不甘：你想往前走，但你也害怕又一次把希望交出去之后落空。",
+    signals: ["你很疲惫", "你害怕再次落空", "你还不甘心"],
   };
 }
 
@@ -306,12 +324,14 @@ function normalizeInsightText(value: unknown, fallback: string) {
   }
 
   return text
-    .replace(/另一个我/g, "我")
-    .replace(/TA/g, "我")
-    .replace(/用户/g, "我")
-    .replace(/你/g, "我")
-    .replace(/他/g, "我")
-    .replace(/她/g, "我");
+    .replace(/现实的我/g, "你")
+    .replace(/另一个我/g, "你")
+    .replace(/TA/g, "你")
+    .replace(/用户/g, "你")
+    .replace(/他/g, "你")
+    .replace(/她/g, "你")
+    .replace(/(^|[，。；：、\s])我/g, "$1你")
+    .replace(/自己的/g, "你的");
 }
 
 function normalizeSignals(value: unknown) {
@@ -325,36 +345,65 @@ function normalizeSignals(value: unknown) {
     : [];
 
   if (!signals.length) {
-    return ["我很疲惫", "我害怕再次落空", "我还不甘心"];
+    return ["你很疲惫", "你害怕再次落空", "你还不甘心"];
   }
 
   return signals.map((signal) => {
-    if (signal.startsWith("我")) {
+    if (signal.startsWith("你")) {
       return signal;
     }
 
     if (/怕|害怕|担心|恐惧/.test(signal)) {
-      return `我${signal}`;
+      return `你${signal}`;
     }
 
     if (/累|疲惫|难过|委屈|焦虑|不甘/.test(signal)) {
-      return `我很${signal}`;
+      return `你很${signal}`;
     }
 
-    return `我正在感到${signal}`;
+    return `你正在感到${signal}`;
   });
 }
 
 function formatLetter(letter: string) {
   const trimmed = letter.trim();
-  const hasGreeting = /^亲爱的|^写给|^给/.test(trimmed);
+  const hasGreeting = /^亲爱的另一个我/.test(trimmed);
   const hasSignature = /——|来自平行宇宙的一封回信/.test(trimmed);
+  const body = hasGreeting
+    ? trimmed
+    : `亲爱的另一个我：\n\n${trimmed.startsWith("你好") ? trimmed : `你好，${trimmed}`}`;
 
   return [
-    hasGreeting ? trimmed : `写给此刻的我：\n\n${trimmed}`,
+    body,
     hasSignature ? "" : "\n——来自平行宇宙的一封回信",
   ]
     .filter(Boolean)
     .join("\n")
     .trim();
+}
+
+function normalizeActionText(value: unknown, fallback: string) {
+  const text = typeof value === "string" ? value.trim() : "";
+  const normalized = normalizeInsightText(text, fallback);
+
+  if (!normalized) {
+    return fallback;
+  }
+
+  return normalized.startsWith("你") ? normalized : `你${normalized}`;
+}
+
+function normalizeActionSteps(value: unknown) {
+  const steps = Array.isArray(value)
+    ? value
+        .filter((item) => typeof item === "string")
+        .map((item) => normalizeActionText(item, ""))
+        .map((item) => item.trim())
+        .filter(Boolean)
+        .slice(0, 5)
+    : [];
+
+  return steps.length > 0
+    ? steps
+    : ["你把此刻最困扰的事写成一句话", "你选一个五分钟内能开始的小动作"];
 }

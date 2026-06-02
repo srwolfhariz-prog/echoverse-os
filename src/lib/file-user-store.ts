@@ -912,7 +912,7 @@ export async function createFileLifeLetter(
       next: {
         letters: [letter, ...(Array.isArray(store.letters) ? store.letters : [])].slice(
           0,
-          200,
+          10,
         ),
       },
       result: letter,

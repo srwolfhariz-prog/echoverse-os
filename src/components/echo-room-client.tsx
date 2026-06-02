@@ -1489,7 +1489,7 @@ export function EchoRoomClient() {
 
               {echoNotes.length === 0 ? (
                 <p className="rounded-3xl border border-white/10 bg-white/[0.04] p-4 text-sm leading-7 text-[#AAB4C3]">
-                  这个平行宇宙还很安静。等你完成第一个答案，它会给你第一句回声。
+                  这个平行宇宙还很安静。等你完成第一个阶段，它会给你第一个回声。
                 </p>
               ) : null}
 

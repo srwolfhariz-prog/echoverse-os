@@ -1,14 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireApiUserId } from "@/lib/api-auth";
 import { profileSections, sortProfileSections } from "@/lib/constants";
-import {
-  listFileMemories,
-  listFileProfileDocuments,
-} from "@/lib/file-user-store";
-import {
-  buildPersonaRuntimeDocuments,
-  personaRuntimeSections,
-} from "@/lib/persona-runtime";
+import { listFileProfileDocuments } from "@/lib/file-user-store";
 
 export const runtime = "nodejs";
 
@@ -20,10 +13,7 @@ export async function GET(request: Request) {
   }
 
   const { userId } = auth;
-  const [sections, memories] = await Promise.all([
-    listFileProfileDocuments(userId),
-    listFileMemories(userId),
-  ]);
+  const sections = await listFileProfileDocuments(userId);
   const sortedSections = sortProfileSections(sections);
   const sectionMap = new Map(sortedSections.map((item) => [item.section, item]));
   const archiveReady = profileSections.every((section) =>
@@ -37,15 +27,7 @@ export async function GET(request: Request) {
     );
   }
 
-  const runtimeContext = buildPersonaRuntimeDocuments(sortedSections, memories);
-  const runtimeFiles = new Map([
-    ["soul", runtimeContext.soulDocument],
-    ["agents", runtimeContext.agentsDocument],
-  ]);
-  const content = buildWordProfileDocument(
-    sortedSections,
-    runtimeFiles,
-  );
+  const content = buildWordProfileDocument(sortedSections);
 
   return new Response(content, {
     headers: {
@@ -58,7 +40,6 @@ export async function GET(request: Request) {
 
 function buildWordProfileDocument(
   sections: Array<{ section: string; title: string; content: string }>,
-  runtimeFiles: Map<string, string>,
 ) {
   const sectionMap = new Map(sections.map((item) => [item.section, item]));
   const body = [
@@ -81,15 +62,6 @@ function buildWordProfileDocument(
       '<div class="page-break"></div>',
       `<h1>${escapeHtml(document?.title ?? section.title)}</h1>`,
       markdownToWordHtml(document?.content.trim() ?? ""),
-    );
-  }
-
-  body.push('<div class="page-break"></div>', "<h1>附录：运行文档</h1>");
-
-  for (const section of personaRuntimeSections) {
-    body.push(
-      `<h2>${escapeHtml(section.title)}</h2>`,
-      markdownToWordHtml(runtimeFiles.get(section.section)?.trim() ?? ""),
     );
   }
 

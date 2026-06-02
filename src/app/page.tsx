@@ -28,9 +28,20 @@ export default function Home() {
             在另一个角落有了回声。
           </p>
 
-          <p className="home-description">
-            这里不是一个普通 AI 助手。它会通过对话、记忆和人生回信，慢慢理解你的经历、情绪、遗憾、愿望和选择模式。然后，在一个由你的人生生成的平行世界里，保存那个快被现实弄丢的自己。
-          </p>
+          <div className="home-description">
+            <p>
+              这里不是一个普通 AI 助手，而是一个通往平行宇宙的‘回声’系统。
+            </p>
+            <p>
+              你会慢慢蒸馏出一个平行宇宙里的自己：TA 拥有与你相近的人格底色、记忆线索和处事方式。
+            </p>
+            <p>
+              ‘回声’系统会把所有人格色彩沉淀成可下载的人格文档，你可以随时给TA写信，向另一个自己询问那些卡在心里的问题。
+            </p>
+            <p>
+              你还能看见 TA 在另一个世界里的日常、心情和人生进度。你们在各自的世界生活，而‘回声’把你们连接在一起。
+            </p>
+          </div>
 
           <div className="home-actions">
             <HomeAuthLink href="/echo-room" className="premium-button home-primary-button">

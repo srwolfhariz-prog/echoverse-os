@@ -135,11 +135,21 @@ export async function POST(request: Request) {
           requested_parallel_day_index: nextDayIndex,
           archive_completed_at: archiveCompletedAt,
           profile_ready: true,
-          soul_document: personaContext.soulDocument,
-          agents_document: personaContext.agentsDocument,
-          profile_sections: personaContext.visibleSections,
-          recent_memories: memories,
-          recent_life_letters: letters,
+          soul_document: truncatePromptText(personaContext.soulDocument, 4800),
+          agents_document: truncatePromptText(personaContext.agentsDocument, 3200),
+          profile_sections: personaContext.visibleSections.map((section) => ({
+            ...section,
+            content: truncatePromptText(section.content, 1400),
+          })),
+          recent_memories: memories.map((memory) => ({
+            ...memory,
+            content: truncatePromptText(memory.content, 360),
+          })),
+          recent_life_letters: letters.map((letter) => ({
+            ...letter,
+            question: truncatePromptText(letter.question, 260),
+            answer: truncatePromptText(letter.answer, 900),
+          })),
           life_script: previousLifeScript,
           latest_parallel_day: previousLatest,
           life_records: lifeRecords,
@@ -159,8 +169,10 @@ export async function POST(request: Request) {
         2,
       ),
       temperature: 0.9,
+      timeoutMs: 65_000,
+      maxRetries: 0,
     });
-    const mood = result.mood?.trim() || "平静里带一点紧张";
+    const mood = compactStatusKeywords(result.mood, "平静 / 紧张", 2);
     const scene = result.scene?.trim() || previousLifeScript.stable_context.home;
     const energy = normalizeScore(result.energy, 62);
     const clarity = normalizeScore(result.clarity, 57);
@@ -192,10 +204,17 @@ export async function POST(request: Request) {
     const worldPayload = {
       ...state,
       day_title: result.day_title?.trim() || "我把今天认真过完了",
-      location: result.location?.trim() || nextLifeScript.stable_context.home,
-      occupation:
-        result.occupation?.trim() || nextLifeScript.stable_context.occupation,
-      event: result.event?.trim() || "推进了一件生活里的小事",
+      location: compactStatusKeywords(
+        result.location,
+        nextLifeScript.stable_context.home,
+        3,
+      ),
+      occupation: compactStatusKeywords(
+        result.occupation,
+        nextLifeScript.stable_context.occupation,
+        3,
+      ),
+      event: compactStatusKeywords(result.event, "生活推进", 3),
       happiness: normalizeScore(result.happiness, 68),
       anxiety: normalizeScore(result.anxiety, 34),
       relationship: normalizeScore(result.relationship, 52),
@@ -286,6 +305,14 @@ function parseJson<T>(value: string | null | undefined): T | null {
   } catch {
     return null;
   }
+}
+
+function truncatePromptText(value: string, maxLength: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}...`
+    : normalized;
 }
 
 function parseWish(value: string | null | undefined): ParallelWish | null {
@@ -412,6 +439,32 @@ function normalizeStringArray(
 
 function normalizeScore(value: unknown, fallback: number) {
   return Math.min(100, Math.max(1, Math.round(Number(value) || fallback)));
+}
+
+function compactStatusKeywords(
+  value: unknown,
+  fallback: string,
+  maxItems: number,
+) {
+  const source = typeof value === "string" && value.trim() ? value : fallback;
+  const normalized = source
+    .replace(/^我今天在/, "")
+    .replace(/^今天/, "")
+    .replace(/经历了/g, "")
+    .replace(/心情是/g, "")
+    .replace(/当前/g, "")
+    .replace(/主要所在/g, "")
+    .replace(/有一点/g, "")
+    .trim();
+  const parts = normalized
+    .split(/[，,、/／|；;。.!！?？]|以及|并且|同时|正在|开始|完成|收到|准备|经历|和|与|但|却/g)
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .map((item) => (item.length > 12 ? item.slice(0, 12) : item))
+    .filter(Boolean);
+  const keywords = parts.length > 0 ? parts : [normalized.slice(0, 10)];
+
+  return Array.from(new Set(keywords)).slice(0, maxItems).join(" / ");
 }
 
 function normalizeTimeline(value: unknown, script: ParallelLifeScript) {

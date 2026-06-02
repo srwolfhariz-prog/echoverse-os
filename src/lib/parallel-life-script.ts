@@ -59,12 +59,15 @@ export async function generateParallelLifeScript({
     user: JSON.stringify(
       {
         archive_completed_at: archiveCompletedAt,
-        soul_document: soulDocument,
-        agents_document: agentsDocument,
-        profile_sections: profileSections,
+        soul_document: truncateText(soulDocument, 4200),
+        agents_document: truncateText(agentsDocument, 3200),
+        profile_sections: profileSections.map((section) => ({
+          ...section,
+          content: truncateText(section.content, 1600),
+        })),
         recent_memories: memories.map((memory) => ({
           type: memory.type,
-          content: memory.content,
+          content: truncateText(memory.content, 360),
           emotion: memory.emotion,
           importance: memory.importance,
           confidence: memory.confidence,
@@ -75,6 +78,8 @@ export async function generateParallelLifeScript({
       2,
     ),
     temperature: 0.78,
+    timeoutMs: 65_000,
+    maxRetries: 0,
   });
 
   return normalizeParallelLifeScript(
@@ -163,6 +168,14 @@ export function normalizeParallelLifeScript(
 
 function cleanText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function truncateText(value: string, maxLength: number) {
+  const normalized = value.replace(/\s+/g, " ").trim();
+
+  return normalized.length > maxLength
+    ? `${normalized.slice(0, maxLength)}...`
+    : normalized;
 }
 
 function normalizeStringArray(

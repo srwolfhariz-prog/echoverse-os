@@ -280,7 +280,7 @@ export function ProfileClient() {
             </div>
             <div>
               <h2 className="font-medium text-[#F4EFE7]">档案目录</h2>
-              <p className="mt-1 text-sm text-[#AAB4C3]">Soul Document</p>
+              <p className="mt-1 text-sm text-[#AAB4C3]">人格画像目录</p>
             </div>
           </div>
 

@@ -183,24 +183,35 @@ export async function createJsonCompletion<T>({
   system,
   user,
   temperature = 0.35,
+  timeoutMs,
+  maxRetries,
 }: {
   system: string;
   user: string;
   temperature?: number;
+  timeoutMs?: number;
+  maxRetries?: number;
 }) {
   const { client, config } = getClient();
   const systemPrompt = await buildSystemPrompt(system);
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: user },
-    ],
-    ...(config.jsonResponseFormat
-      ? { response_format: { type: "json_object" as const } }
-      : {}),
-    temperature,
-  });
+  const requestOptions =
+    typeof timeoutMs === "number" || typeof maxRetries === "number"
+      ? { timeout: timeoutMs, maxRetries }
+      : undefined;
+  const response = await client.chat.completions.create(
+    {
+      model: config.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: user },
+      ],
+      ...(config.jsonResponseFormat
+        ? { response_format: { type: "json_object" as const } }
+        : {}),
+      temperature,
+    },
+    requestOptions,
+  );
 
   const content = response.choices[0]?.message?.content ?? "{}";
   return parseJsonObject<T>(content);
