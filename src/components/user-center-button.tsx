@@ -11,16 +11,19 @@ import type { FormEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import {
+  CalendarDays,
   Camera,
   Check,
   KeyRound,
   LogIn,
   LogOut,
+  Mars,
   PencilLine,
   ShieldCheck,
   Upload,
   UserRound,
   UserRoundPlus,
+  Venus,
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -29,6 +32,14 @@ import {
   USER_CENTER_STORAGE_KEY,
 } from "@/lib/local-user-session";
 import { fetchWithLocalUser } from "@/lib/local-user-client";
+import {
+  calculateAgeFromBirthDate,
+  isUsableBirthDate,
+  normalizeBirthDate,
+  normalizeUserGender,
+  userGenderLabels,
+  type UserGender,
+} from "@/lib/user-demographics";
 
 const userCenterChangeEvent = "echoverse:user-center-change";
 const userAuthRequestEvent = "echoverse:user-auth-request";
@@ -38,6 +49,8 @@ const userCenterApi = "/api/user-center";
 type UserCenterState = {
   accountId: string;
   avatarDataUrl?: string;
+  birthDate?: string;
+  gender?: UserGender;
   loggedIn: boolean;
   motto: string;
   nickname: string;
@@ -57,6 +70,8 @@ type StoredAuthRequest = UserAuthRequestDetail & {
 
 type AuthFormState = {
   avatarDataUrl: string;
+  birthDate: string;
+  gender: UserGender | "";
   nickname: string;
   password: string;
 };
@@ -70,6 +85,8 @@ const defaultUserCenter: UserCenterState = {
 
 const defaultAuthForm: AuthFormState = {
   avatarDataUrl: "",
+  birthDate: "",
+  gender: "",
   nickname: "",
   password: "",
 };
@@ -252,6 +269,18 @@ async function createPasswordHash(nickname: string, password: string) {
     .join("");
 }
 
+function GenderMark({ gender }: { gender?: UserGender }) {
+  if (gender === "female") {
+    return <Venus className="size-4 text-[#FFD6E6]" />;
+  }
+
+  if (gender === "male") {
+    return <Mars className="size-4 text-[#D7E7FF]" />;
+  }
+
+  return <UserRound className="size-4 text-[#AAB4C3]" />;
+}
+
 type UserCenterButtonProps = {
   variant?: "auth-only" | "button";
 };
@@ -261,6 +290,7 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
   const pathname = usePathname();
   const showButton = variant === "button";
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const birthDateInputRef = useRef<HTMLInputElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const mottoInputRef = useRef<HTMLTextAreaElement | null>(null);
   const pendingAuthHrefRef = useRef<string | null>(null);
@@ -274,6 +304,13 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
   const user = useUserCenterState();
   const displayAvatarDataUrl = user.loggedIn ? user.avatarDataUrl : "";
   const displayMotto = user.loggedIn ? mottoDraft : "";
+  const displayAge = user.loggedIn
+    ? calculateAgeFromBirthDate(user.birthDate)
+    : null;
+  const displayGender = user.loggedIn
+    ? normalizeUserGender(user.gender)
+    : undefined;
+  const maxBirthDate = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
   useEffect(() => {
     if (!open) {
@@ -480,6 +517,8 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
     setAuthError("");
     setAuthForm({
       avatarDataUrl: "",
+      birthDate: "",
+      gender: "",
       nickname: "",
       password: "",
     });
@@ -499,6 +538,15 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
 
   function updateAuthForm(patch: Partial<AuthFormState>) {
     setAuthForm((current) => ({ ...current, ...patch }));
+  }
+
+  function openBirthDatePicker() {
+    const input = birthDateInputRef.current as
+      | (HTMLInputElement & { showPicker?: () => void })
+      | null;
+
+    input?.focus();
+    input?.showPicker?.();
   }
 
   async function uploadAvatar(file: File | undefined) {
@@ -548,6 +596,18 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
       return;
     }
 
+    if (authMode === "register") {
+      if (!normalizeUserGender(authForm.gender)) {
+        setAuthError("请选择性别。");
+        return;
+      }
+
+      if (!isUsableBirthDate(authForm.birthDate)) {
+        setAuthError("请填写真实出生日期。");
+        return;
+      }
+    }
+
     setAuthSubmitting(true);
 
     try {
@@ -557,6 +617,14 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
         {
           avatarDataUrl:
             authMode === "register" ? authForm.avatarDataUrl : undefined,
+          birthDate:
+            authMode === "register"
+              ? normalizeBirthDate(authForm.birthDate)
+              : undefined,
+          gender:
+            authMode === "register"
+              ? normalizeUserGender(authForm.gender)
+              : undefined,
           loggedIn: true,
           nickname,
           passwordHash,
@@ -564,6 +632,14 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
         {
           type: authMode === "register" ? "user.registered" : "user.logged_in",
           payload: {
+            birthDate:
+              authMode === "register"
+                ? normalizeBirthDate(authForm.birthDate)
+                : undefined,
+            gender:
+              authMode === "register"
+                ? normalizeUserGender(authForm.gender)
+                : undefined,
             hasAvatar: authMode === "register" && Boolean(authForm.avatarDataUrl),
             nickname,
             source: "auth_modal",
@@ -845,6 +921,19 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
                   </span>
                 </div>
                 <div className="flex items-center justify-between gap-3">
+                  <span className="text-[#6F7787]">身份信息</span>
+                  <span className="flex items-center gap-2 font-medium text-[#F4EFE7]">
+                    {user.loggedIn ? (
+                      <>
+                        <GenderMark gender={displayGender} />
+                        {displayAge !== null ? `${displayAge}岁` : ""}
+                      </>
+                    ) : (
+                      ""
+                    )}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between gap-3">
                   <span className="text-[#6F7787]">账号状态</span>
                   <span className="font-medium text-[#D8B46A]">
                     {user.loggedIn ? "已连接" : "未连接"}
@@ -889,7 +978,7 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
               animate={{ opacity: 1, y: 0, scale: 1 }}
               exit={{ opacity: 0, y: 18, scale: 0.98 }}
               transition={{ duration: 0.24, ease: [0.22, 1, 0.36, 1] }}
-              className="relative w-[min(460px,calc(100vw-2rem))] overflow-hidden rounded-[1.75rem] border border-white/12 bg-[#080C18]/92 p-5 shadow-[0_32px_110px_rgba(0,0,0,0.48),0_0_80px_rgba(216,180,106,0.14)] backdrop-blur-2xl"
+              className="relative max-h-[calc(100vh-2rem)] w-[min(460px,calc(100vw-2rem))] overflow-y-auto rounded-[1.75rem] border border-white/12 bg-[#080C18]/92 p-5 shadow-[0_32px_110px_rgba(0,0,0,0.48),0_0_80px_rgba(216,180,106,0.14)] backdrop-blur-2xl"
             >
               <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(216,180,106,0.18),transparent_32%),radial-gradient(circle_at_100%_20%,rgba(216,167,177,0.12),transparent_34%)]" />
               <div className="relative">
@@ -1006,6 +1095,69 @@ export function UserCenterButton({ variant = "button" }: UserCenterButtonProps) 
                 )}
 
                 <div className="mt-5 space-y-3">
+                  {authMode === "register" ? (
+                    <div className="grid gap-3 sm:grid-cols-[1fr_1fr]">
+                      <div>
+                        <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#D8B46A]">
+                          <Venus className="size-4" />
+                          性别
+                        </span>
+                        <div className="grid grid-cols-2 gap-2">
+                          {(["female", "male"] as const).map((gender) => (
+                            <button
+                              key={gender}
+                              type="button"
+                              onClick={() => updateAuthForm({ gender })}
+                              className={cn(
+                                "flex min-h-12 items-center justify-center gap-2 rounded-2xl border px-3 text-sm font-semibold transition",
+                                authForm.gender === gender
+                                  ? "border-[#D8B46A]/62 bg-[#D8B46A]/18 text-[#FFF4D8] shadow-[0_0_18px_rgba(216,180,106,0.14)]"
+                                  : "border-white/10 bg-white/[0.045] text-[#AAB4C3] hover:border-white/18 hover:text-[#F4EFE7]",
+                              )}
+                            >
+                              <GenderMark gender={gender} />
+                              {userGenderLabels[gender]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      <label className="block">
+                        <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#D8B46A]">
+                          <CalendarDays className="size-4" />
+                          出生日期
+                        </span>
+                        <div
+                          className="birth-date-field"
+                          onPointerDown={(event) => {
+                            event.preventDefault();
+                            openBirthDatePicker();
+                          }}
+                        >
+                          <input
+                            ref={birthDateInputRef}
+                            value={authForm.birthDate}
+                            onChange={(event) =>
+                              updateAuthForm({ birthDate: event.target.value })
+                            }
+                            className={cn(
+                              "soft-input birth-date-input min-h-12 w-full rounded-2xl px-4 text-sm",
+                              !authForm.birthDate && "birth-date-input--empty",
+                            )}
+                            max={maxBirthDate}
+                            placeholder="yy/mm/dd"
+                            type="date"
+                          />
+                          {!authForm.birthDate ? (
+                            <span className="birth-date-placeholder">
+                              yy/mm/dd
+                            </span>
+                          ) : null}
+                        </div>
+                      </label>
+                    </div>
+                  ) : null}
+
                   <label className="block">
                     <span className="mb-1.5 flex items-center gap-2 text-sm font-semibold text-[#D8B46A]">
                       <UserRound className="size-4" />

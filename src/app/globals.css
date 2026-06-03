@@ -679,6 +679,39 @@ body {
   box-shadow: 0 0 0 4px rgba(216, 180, 106, 0.08);
 }
 
+.birth-date-field {
+  position: relative;
+  cursor: pointer;
+}
+
+.birth-date-input {
+  cursor: pointer;
+}
+
+.birth-date-input--empty {
+  color: transparent;
+}
+
+.birth-date-input--empty::-webkit-datetime-edit {
+  color: transparent;
+}
+
+.birth-date-input::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  opacity: 0.42;
+}
+
+.birth-date-placeholder {
+  position: absolute;
+  top: 50%;
+  left: 1rem;
+  pointer-events: none;
+  transform: translateY(-50%);
+  color: rgba(170, 180, 195, 0.58);
+  font-size: 0.875rem;
+  line-height: 1;
+}
+
 .echo-gate {
   position: relative;
   aspect-ratio: 1;
@@ -1558,6 +1591,152 @@ body {
   flex-wrap: wrap;
   gap: 0.9rem;
   margin-top: clamp(2.2rem, 4vh, 3rem);
+}
+
+.home-guide-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  width: fit-content;
+  border: 1px solid rgba(216, 180, 106, 0.22);
+  border-radius: 999px;
+  background:
+    linear-gradient(135deg, rgba(255, 244, 216, 0.075), rgba(216, 167, 177, 0.055)),
+    rgba(8, 12, 24, 0.38);
+  padding: 0.74rem 1rem;
+  margin-top: 1rem;
+  color: rgba(255, 244, 216, 0.88);
+  font-size: 0.88rem;
+  font-weight: 600;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.055),
+    0 14px 34px rgba(0, 0, 0, 0.14);
+  backdrop-filter: blur(18px);
+  transition:
+    border-color 0.24s ease,
+    color 0.24s ease,
+    transform 0.24s ease,
+    background 0.24s ease;
+}
+
+.home-guide-button:hover {
+  border-color: rgba(216, 180, 106, 0.42);
+  background:
+    linear-gradient(135deg, rgba(255, 244, 216, 0.11), rgba(216, 167, 177, 0.085)),
+    rgba(8, 12, 24, 0.44);
+  color: #fff4d8;
+  transform: translateY(-1px);
+}
+
+.home-guide-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(1rem, 3vw, 2rem);
+  background: rgba(5, 8, 18, 0.04);
+  backdrop-filter: blur(10px) saturate(1.04);
+}
+
+.home-guide-dialog {
+  display: flex;
+  width: min(860px, calc(100vw - 2rem));
+  flex-direction: column;
+  overflow: visible;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1.75rem;
+  background:
+    linear-gradient(135deg, rgba(24, 28, 48, 0.88), rgba(31, 24, 42, 0.86) 54%, rgba(17, 32, 44, 0.84)),
+    rgba(8, 12, 24, 0.82);
+  box-shadow:
+    0 26px 76px rgba(0, 0, 0, 0.34),
+    0 0 48px rgba(216, 180, 106, 0.1);
+  backdrop-filter: blur(26px) saturate(1.08);
+}
+
+.home-guide-dialog__head {
+  display: flex;
+  flex-shrink: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 1.15rem 1.35rem 1rem;
+}
+
+.home-guide-dialog__eyebrow {
+  margin: 0 0 0.5rem;
+  color: #d8b46a;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.home-guide-dialog__head h2 {
+  margin: 0;
+  color: #f4efe7;
+  font-size: 1.35rem;
+  font-weight: 650;
+}
+
+.home-guide-dialog__close {
+  display: grid;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex-shrink: 0;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.055);
+  color: #aab4c3;
+  transition:
+    border-color 0.24s ease,
+    color 0.24s ease;
+}
+
+.home-guide-dialog__close:hover {
+  border-color: rgba(216, 180, 106, 0.35);
+  color: #d8b46a;
+}
+
+.home-guide-dialog__intro {
+  margin: 0;
+  padding: 1rem 1.35rem 0.8rem;
+  color: #d9e0ea;
+  font-size: 0.92rem;
+  line-height: 1.72;
+}
+
+.home-guide-dialog__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.72rem;
+  overflow: visible;
+  padding: 0 1.35rem 1.25rem;
+}
+
+.home-guide-dialog__item {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 1.25rem;
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.82rem 0.92rem;
+}
+
+.home-guide-dialog__item h3 {
+  margin: 0;
+  color: #fff4d8;
+  font-size: 0.98rem;
+  font-weight: 650;
+}
+
+.home-guide-dialog__item p {
+  margin: 0.45rem 0 0;
+  color: #aab4c3;
+  font-size: 0.84rem;
+  line-height: 1.62;
 }
 
 .home-bottom-quote {
@@ -3323,6 +3502,26 @@ body {
       transparent 1px 74px
     );
   opacity: 0.72;
+}
+
+.parallel-scene-preview-image {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background:
+    linear-gradient(180deg, rgba(8, 12, 24, 0.02), rgba(8, 12, 24, 0.18)),
+    url("/assets/visual/parallel-world-placeholder.png") center / cover no-repeat;
+  opacity: 0.96;
+}
+
+.parallel-scene-preview-image::after {
+  position: absolute;
+  inset: 0;
+  content: "";
+  background:
+    radial-gradient(circle at 22% 18%, rgba(255, 244, 216, 0.12), transparent 24%),
+    linear-gradient(90deg, rgba(8, 12, 24, 0.12), transparent 45%, rgba(8, 12, 24, 0.2));
+  pointer-events: none;
 }
 
 .parallel-window {

@@ -593,7 +593,8 @@ export function WorldClient() {
             <div className="parallel-box parallel-box-a" />
             <div className="parallel-box parallel-box-b" />
             <div className="parallel-person" />
-            <div className="absolute left-6 top-6 rounded-full border border-white/10 bg-[#080C18]/55 px-4 py-2 text-sm text-[#D9E0EA] backdrop-blur-xl">
+            <div className="parallel-scene-preview-image" aria-hidden="true" />
+            <div className="absolute left-6 top-6 z-[2] rounded-full border border-white/10 bg-[#080C18]/55 px-4 py-2 text-sm text-[#D9E0EA] backdrop-blur-xl">
               场景展示窗口{hasWorldDiary ? `：${world.scene}` : ""}
             </div>
           </div>

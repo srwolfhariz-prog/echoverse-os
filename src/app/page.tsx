@@ -1,4 +1,5 @@
 import { ArrowRight, Globe2, Sparkles } from "lucide-react";
+import { EchoGuideButton } from "@/components/home/echo-guide-button";
 import { HomeAuthLink } from "@/components/home/home-auth-link";
 import { PlanetHeroVisual } from "@/components/home/planet-hero-visual";
 
@@ -53,6 +54,8 @@ export default function Home() {
               <Globe2 className="size-4" />
             </HomeAuthLink>
           </div>
+
+          <EchoGuideButton />
         </div>
 
         <PlanetHeroVisual />

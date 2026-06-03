@@ -10,6 +10,7 @@ import {
   unlink,
   writeFile,
 } from "fs/promises";
+import type { UserGender } from "@/lib/user-demographics";
 
 export const echoverseDataRoot = path.join(process.cwd(), ".echoverse-data");
 
@@ -36,8 +37,21 @@ export type FileProfile = {
   createdAt: string;
   lastLoginAt: string;
   avatarDataUrl?: string;
+  birthDate?: string;
   displayName?: string;
+  gender?: UserGender;
   motto?: string;
+  worldCharacter?: FileWorldCharacterReference;
+};
+
+export type FileWorldCharacterReference = {
+  generatedAt?: string;
+  identityPrompt?: string;
+  model?: string;
+  referenceImageDataUrl?: string;
+  referenceImagePath?: string;
+  referenceImageUrl?: string;
+  status: "pending" | "generated";
 };
 
 export type FileMemoryItem = {
@@ -385,10 +399,14 @@ export async function findFileUserByUsername(username: string) {
 
 export async function registerFileUser({
   avatarDataUrl,
+  birthDate,
+  gender,
   passwordHash,
   username,
 }: {
   avatarDataUrl?: string;
+  birthDate?: string;
+  gender?: UserGender;
   passwordHash: string;
   username: string;
 }) {
@@ -437,10 +455,14 @@ export async function registerFileUser({
   await ensureUserDataFiles(user);
   await updateUserProfile(user.id, {
     avatarDataUrl,
+    birthDate,
     displayName: trimmedUsername,
+    gender,
     lastLoginAt: now,
   });
   await appendUserAction(user.id, "user.registered", {
+    birthDate,
+    gender,
     username: trimmedUsername,
   });
 

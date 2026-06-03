@@ -8,6 +8,8 @@ import {
   listFileMemories,
   listFileProfileDocuments,
   listFileWorldStates,
+  readUserProfile,
+  type FileProfile,
 } from "@/lib/file-user-store";
 import {
   normalizeParallelLifeScript,
@@ -20,6 +22,10 @@ import {
   setUserAppState,
   updateUserMemoryDocument,
 } from "@/lib/user-memory";
+import {
+  calculateAgeFromBirthDate,
+  userGenderLabels,
+} from "@/lib/user-demographics";
 
 export const runtime = "nodejs";
 
@@ -68,7 +74,7 @@ export async function POST(request: Request) {
     }
 
     const { userId } = auth;
-    const [profile, memories, letters, previousWorlds, appStates] =
+    const [profile, memories, letters, previousWorlds, appStates, userProfile] =
       await Promise.all([
         listFileProfileDocuments(userId),
         listFileMemories(userId, { take: 30 }),
@@ -80,6 +86,7 @@ export async function POST(request: Request) {
           lifeRecordStateKey,
           wishStateKey,
         ]),
+        readUserProfile(userId),
       ]);
     const personaContext = buildPersonaRuntimeDocuments(profile, memories);
 
@@ -134,6 +141,8 @@ export async function POST(request: Request) {
           random_seed: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
           requested_parallel_day_index: nextDayIndex,
           archive_completed_at: archiveCompletedAt,
+          registered_user: toRegisteredUserIdentity(userProfile),
+          world_character_reference: userProfile?.worldCharacter ?? null,
           profile_ready: true,
           soul_document: truncatePromptText(personaContext.soulDocument, 4800),
           agents_document: truncatePromptText(personaContext.agentsDocument, 3200),
@@ -293,6 +302,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function toRegisteredUserIdentity(profile: FileProfile | null) {
+  return {
+    age: calculateAgeFromBirthDate(profile?.birthDate),
+    birthDate: profile?.birthDate,
+    gender: profile?.gender,
+    genderLabel: profile?.gender ? userGenderLabels[profile.gender] : undefined,
+  };
 }
 
 function parseJson<T>(value: string | null | undefined): T | null {

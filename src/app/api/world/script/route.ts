@@ -5,6 +5,8 @@ import {
   getFileAppStateValue,
   listFileMemories,
   listFileProfileDocuments,
+  readUserProfile,
+  type FileProfile,
 } from "@/lib/file-user-store";
 import {
   generateParallelLifeScript,
@@ -16,6 +18,10 @@ import {
   setUserAppState,
   updateUserMemoryDocument,
 } from "@/lib/user-memory";
+import {
+  calculateAgeFromBirthDate,
+  userGenderLabels,
+} from "@/lib/user-demographics";
 
 export const runtime = "nodejs";
 
@@ -28,10 +34,11 @@ export async function POST(request: Request) {
     }
 
     const { userId } = auth;
-    const [profile, memories, storedScript] = await Promise.all([
+    const [profile, memories, storedScript, userProfile] = await Promise.all([
       listFileProfileDocuments(userId),
       listFileMemories(userId, { sortByImportance: true, take: 80 }),
       getFileAppStateValue(userId, parallelLifeScriptStateKey),
+      readUserProfile(userId),
     ]);
 
     if (storedScript) {
@@ -58,6 +65,7 @@ export async function POST(request: Request) {
       agentsDocument: personaContext.agentsDocument,
       profileSections: personaContext.visibleSections,
       memories,
+      registeredUser: toRegisteredUserIdentity(userProfile),
     });
 
     await setUserAppState(parallelLifeScriptStateKey, lifeScript, userId);
@@ -90,6 +98,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+function toRegisteredUserIdentity(profile: FileProfile | null) {
+  return {
+    age: calculateAgeFromBirthDate(profile?.birthDate),
+    birthDate: profile?.birthDate,
+    gender: profile?.gender,
+    genderLabel: profile?.gender ? userGenderLabels[profile.gender] : undefined,
+  };
 }
 
 function getArchiveCompletedAt(profile: Array<{ updatedAt: Date | string }>) {

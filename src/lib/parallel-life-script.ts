@@ -40,18 +40,27 @@ type MemoryInput = {
   createdAt?: Date | string;
 };
 
+type RegisteredUserIdentityInput = {
+  age?: number | null;
+  birthDate?: string;
+  gender?: string;
+  genderLabel?: string;
+};
+
 export async function generateParallelLifeScript({
   archiveCompletedAt,
   soulDocument,
   agentsDocument,
   profileSections,
   memories,
+  registeredUser,
 }: {
   archiveCompletedAt: string;
   soulDocument: string;
   agentsDocument: string;
   profileSections: ProfileSectionInput[];
   memories: MemoryInput[];
+  registeredUser?: RegisteredUserIdentityInput;
 }) {
   const prompt = await loadPrompt("parallel-life-script.md");
   const result = await createJsonCompletion<LifeScriptResponse>({
@@ -59,6 +68,7 @@ export async function generateParallelLifeScript({
     user: JSON.stringify(
       {
         archive_completed_at: archiveCompletedAt,
+        registered_user: registeredUser ?? null,
         soul_document: truncateText(soulDocument, 4200),
         agents_document: truncateText(agentsDocument, 3200),
         profile_sections: profileSections.map((section) => ({

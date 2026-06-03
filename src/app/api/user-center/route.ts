@@ -15,6 +15,12 @@ import {
   type FileUserIndexItem,
 } from "@/lib/file-user-store";
 import { getLocalAccountIdFromRequest } from "@/lib/user-memory";
+import {
+  isUsableBirthDate,
+  normalizeBirthDate,
+  normalizeUserGender,
+  type UserGender,
+} from "@/lib/user-demographics";
 
 export const runtime = "nodejs";
 
@@ -24,6 +30,8 @@ const loggedOutNickname = "未登录用户";
 type UserCenterProfile = {
   accountId: string;
   avatarDataUrl?: string;
+  birthDate?: string;
+  gender?: UserGender;
   loggedIn: boolean;
   motto: string;
   nickname: string;
@@ -63,6 +71,8 @@ function toResponseProfile(
   return {
     accountId: user.id,
     avatarDataUrl: profile?.avatarDataUrl,
+    birthDate: profile?.birthDate,
+    gender: profile?.gender,
     loggedIn,
     motto: profile?.motto ?? defaultMotto,
     nickname: profile?.displayName ?? profile?.username ?? user.username,
@@ -132,6 +142,8 @@ export async function PATCH(request: Request) {
   try {
     const body = (await request.json()) as UserCenterRequest;
     const eventType = typeof body.event?.type === "string" ? body.event.type : "";
+    const birthDate = normalizeBirthDate(body.profile?.birthDate);
+    const gender = normalizeUserGender(body.profile?.gender);
     const username = normalizeUsername(body.profile?.nickname);
     const passwordHash = normalizePasswordHash(body.profile?.passwordHash);
 
@@ -143,12 +155,21 @@ export async function PATCH(request: Request) {
         );
       }
 
+      if (!gender || !isUsableBirthDate(birthDate)) {
+        return NextResponse.json(
+          { error: "请选择性别并填写真实出生日期。" },
+          { status: 400 },
+        );
+      }
+
       try {
         const user = await registerFileUser({
           avatarDataUrl:
             typeof body.profile?.avatarDataUrl === "string"
               ? body.profile.avatarDataUrl
               : undefined,
+          birthDate,
+          gender,
           passwordHash,
           username,
         });
